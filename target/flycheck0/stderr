@@ -1,0 +1,5 @@
+error: can't find bin `kaspa-miner` at path `/Users/anthonygryszkin/Desktop/Kaspa Miner/src/main.rs`
+ --> /Users/anthonygryszkin/Desktop/Kaspa Miner/Cargo.toml
+error: can't find bin `kaspa-miner` at path `/Users/anthonygryszkin/Desktop/Kaspa Miner/src/main.rs`
+ --> /Users/anthonygryszkin/Desktop/Kaspa Miner/Cargo.toml
+error: could not compile due to 2 previous target resolution errors
