@@ -20,7 +20,6 @@ KASPA OPS TERMINAL  ::  ASIC FLEET CONTROL  ::  CPU DEV MINER
 
 The production lane is ASIC operations. The CPU lane is for benchmarking, pool testing, stratum validation, and development work.
 
-> CPU mining is not the Kaspa profitability path. ASICs are the wall. KASPilot keeps CPU mode sharp, but treats it honestly as a benchmark/dev tool.
 
 ## Signal
 
