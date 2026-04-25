@@ -7,8 +7,8 @@ authors = ["KASPilot Contributors"]
 readme = "README.md"
 keywords = ["kaspa", "kheavyhash", "asic", "stratum", "miner"]
 categories = ["command-line-utilities", "cryptography::cryptocurrencies", "network-programming"]
-repository = "https://github.com/gryszzz/Kaspa-Miner"
-homepage = "https://github.com/gryszzz/Kaspa-Miner"
+repository = "https://github.com/gryszzz/KasPilot"
+homepage = "https://github.com/gryszzz/KasPilot"
 license = "MIT OR Apache-2.0"
 
 [[bin]]
