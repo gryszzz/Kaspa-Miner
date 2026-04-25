@@ -24,8 +24,6 @@ The production lane is ASIC operations. The CPU lane is for benchmarking, pool t
 ## UI Preview
 
 <p align="center">
-  <img src="docs/assets/kaspilot-ui-preview.svg" alt="CLI-rendered KASPilot real-time mining cockpit preview" width="100%">
-</p>
 
 ## Signal
 
