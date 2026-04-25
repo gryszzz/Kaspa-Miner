@@ -1,0 +1,6 @@
+/target/
+/dist/
+*.log
+config.toml
+fleet.toml
+.DS_Store

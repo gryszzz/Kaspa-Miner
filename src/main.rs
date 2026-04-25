@@ -21,7 +21,9 @@ use stats::Stats;
 #[command(
     name = "kaspa-miner",
     version,
-    about = "KASPilot: a Kaspa-only CPU miner with Common Stratum support"
+    about = "KASPilot: Kaspa ASIC fleet controller plus CPU benchmark/dev miner",
+    long_about = "KASPilot is a Kaspa-only operations terminal for ASIC fleet telemetry, pool validation, CPU benchmarking, and Common Stratum development mining.",
+    after_help = "Modes: --fleet for ASIC ops, --benchmark for local kHeavyHash speed, --tune for CPU settings, or provide pool/wallet config for dev mining."
 )]
 struct Cli {
     /// Path to the TOML config file.

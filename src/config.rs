@@ -4,6 +4,13 @@ use std::path::Path;
 
 use crate::miner::DEFAULT_BATCH_SIZE;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PoolEndpoint {
+    pub host: String,
+    pub port: u16,
+    pub tls: bool,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
     pub pool: String,
@@ -84,27 +91,40 @@ impl Config {
         Ok(cfg)
     }
 
-    /// Parse "stratum+tcp://host:port" → (host, port).
-    pub fn pool_host_port(&self) -> Result<(String, u16)> {
-        let url = self
-            .pool
-            .trim_start_matches("stratum+tcp://")
-            .trim_start_matches("stratum://")
-            .trim_start_matches("tcp://");
-
-        if self.pool.starts_with("stratum+ssl://") || self.pool.starts_with("ssl://") {
-            anyhow::bail!("TLS stratum URLs are not implemented yet; use stratum+tcp://host:port");
-        }
+    /// Parse stratum pool URLs into a normalized endpoint.
+    pub fn pool_endpoint(&self) -> Result<PoolEndpoint> {
+        let pool = self.pool.trim();
+        let (url, tls) = if let Some(rest) = pool.strip_prefix("stratum+ssl://") {
+            (rest, true)
+        } else if let Some(rest) = pool.strip_prefix("ssl://") {
+            (rest, true)
+        } else if let Some(rest) = pool.strip_prefix("stratum+tcp://") {
+            (rest, false)
+        } else if let Some(rest) = pool.strip_prefix("stratum://") {
+            (rest, false)
+        } else if let Some(rest) = pool.strip_prefix("tcp://") {
+            (rest, false)
+        } else {
+            (pool, false)
+        };
 
         let (host, port_str) = url
             .rsplit_once(':')
             .ok_or_else(|| anyhow::anyhow!("Pool URL missing port: {}", self.pool))?;
 
+        if host.trim().is_empty() {
+            anyhow::bail!("Pool URL missing host: {}", self.pool);
+        }
+
         let port = port_str
             .parse::<u16>()
             .with_context(|| format!("Invalid port: {port_str}"))?;
 
-        Ok((host.to_string(), port))
+        Ok(PoolEndpoint {
+            host: host.to_string(),
+            port,
+            tls,
+        })
     }
 
     pub fn login(&self) -> String {
@@ -131,4 +151,62 @@ fn default_batch_size() -> u64 {
 
 fn default_reconnect_secs() -> u64 {
     5
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cfg(pool: &str) -> Config {
+        Config {
+            pool: pool.to_string(),
+            wallet: "kaspa:test".to_string(),
+            worker: "rig".to_string(),
+            threads: 1,
+            batch_size: DEFAULT_BATCH_SIZE,
+            reconnect_secs: 5,
+        }
+    }
+
+    #[test]
+    fn parses_tcp_pool_urls() {
+        let endpoint = cfg("stratum+tcp://pool.example.com:5555")
+            .pool_endpoint()
+            .unwrap();
+
+        assert_eq!(
+            endpoint,
+            PoolEndpoint {
+                host: "pool.example.com".to_string(),
+                port: 5555,
+                tls: false,
+            }
+        );
+    }
+
+    #[test]
+    fn parses_tls_pool_urls() {
+        let endpoint = cfg("stratum+ssl://pool.example.com:443")
+            .pool_endpoint()
+            .unwrap();
+
+        assert_eq!(
+            endpoint,
+            PoolEndpoint {
+                host: "pool.example.com".to_string(),
+                port: 443,
+                tls: true,
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_missing_pool_port() {
+        let err = cfg("stratum+tcp://pool.example.com")
+            .pool_endpoint()
+            .unwrap_err()
+            .to_string();
+
+        assert!(err.contains("missing port"));
+    }
 }

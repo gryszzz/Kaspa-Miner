@@ -47,6 +47,8 @@ It is intentionally Kaspa-only. The production lane is ASIC fleet control. The C
 
 ## Quick Start
 
+Downloadable release archives are produced for Linux, macOS Intel, macOS Apple Silicon, and Windows whenever a `v*` tag is pushed to GitHub.
+
 ```sh
 cargo build --release
 cp config.example.toml config.toml
@@ -58,6 +60,29 @@ For best local CPU benchmark numbers:
 ```sh
 RUSTFLAGS="-C target-cpu=native" cargo build --release
 ```
+
+Create a local package:
+
+```sh
+cargo build --release
+mkdir -p dist/kaspa-miner
+cp target/release/kaspa-miner README.md config.example.toml fleet.example.toml dist/kaspa-miner/
+tar -C dist/kaspa-miner -czf dist/kaspa-miner-local.tar.gz .
+```
+
+Create a GitHub release:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow builds downloadable archives for:
+
+- `x86_64-unknown-linux-gnu`
+- `x86_64-apple-darwin`
+- `aarch64-apple-darwin`
+- `x86_64-pc-windows-msvc`
 
 ## ASIC Fleet
 
@@ -104,6 +129,14 @@ threads = 8
 batch_size = 4096
 reconnect_secs = 5
 ```
+
+Pool URL schemes:
+
+- `stratum+tcp://host:port`
+- `stratum://host:port`
+- `tcp://host:port`
+- `stratum+ssl://host:port`
+- `ssl://host:port`
 
 Dashboard:
 
@@ -165,7 +198,7 @@ Tuning priorities:
 
 ```text
 --config <PATH>       CPU miner config path, default: config.toml
---pool <URL>          stratum+tcp://host:port
+--pool <URL>          stratum+tcp://host:port or stratum+ssl://host:port
 --wallet <ADDRESS>    kaspa: or kaspatest: address
 --worker <NAME>       Worker name appended to wallet for pool login
 --threads <N>         CPU worker threads
@@ -207,11 +240,13 @@ The nonce is the full 8-byte hex nonce, including any pool-provided extranonce p
 ## Production Checklist
 
 - Confirm your pool supports Kaspa Common Stratum.
+- Use `stratum+ssl://` when your pool supports TLS.
 - Keep wallet addresses in `config.toml` instead of shell history.
 - Keep ASIC management ports on a trusted LAN or VPN.
 - Do not expose CGMiner API ports directly to the public internet.
 - Use `--fleet` for ASIC operations and CPU mode for protocol validation.
 - Use release builds for benchmarks and production binaries.
+- Build with `RUSTFLAGS="-C target-cpu=native"` when the binary will run only on the build machine.
 - Watch rejected shares. Repeated low-difficulty, duplicate, or stale share errors usually indicate pool/protocol/latency issues.
 
 ## Roadmap

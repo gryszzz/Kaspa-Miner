@@ -1,18 +1,25 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Result;
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use anyhow::{Context, Result};
+use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::{broadcast, mpsc};
+use tokio::time::timeout;
 
 use super::protocol::{
     authorize_msg, extranonce_to_mask, max_target, submit_msg, subscribe_msg,
     target_from_difficulty, Response, Work,
 };
 use crate::algorithm::kheavyhash::Target;
-use crate::config::Config;
+use crate::config::{Config, PoolEndpoint};
 use crate::stats::Stats;
+
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+trait AsyncReadWrite: AsyncRead + AsyncWrite + Unpin + Send {}
+
+impl<T> AsyncReadWrite for T where T: AsyncRead + AsyncWrite + Unpin + Send {}
 
 #[derive(Debug, Clone)]
 pub enum Event {
@@ -41,7 +48,7 @@ pub async fn run(
 ) {
     let mut submit_id: u64 = 10;
     loop {
-        let (host, port) = match config.pool_host_port() {
+        let endpoint = match config.pool_endpoint() {
             Ok(v) => v,
             Err(e) => {
                 let _ = event_tx.send(Event::Error(e.to_string())).await;
@@ -51,8 +58,7 @@ pub async fn run(
         };
 
         match session(
-            &host,
-            port,
+            &endpoint,
             &config,
             &stats,
             &work_tx,
@@ -79,8 +85,7 @@ pub async fn run(
 
 #[allow(clippy::too_many_arguments)]
 async fn session(
-    host: &str,
-    port: u16,
+    endpoint: &PoolEndpoint,
     config: &Config,
     stats: &Stats,
     work_tx: &broadcast::Sender<Work>,
@@ -88,16 +93,14 @@ async fn session(
     event_tx: &mpsc::Sender<Event>,
     submit_id: &mut u64,
 ) -> Result<()> {
-    let stream = TcpStream::connect((host, port)).await?;
-    let (reader, mut writer) = stream.into_split();
+    let stream = connect_pool(endpoint).await?;
+    let (reader, mut writer) = tokio::io::split(stream);
     let mut lines = BufReader::new(reader).lines();
 
     let _ = event_tx.send(Event::Connected).await;
 
-    // Handshake
-    writer
-        .write_all(subscribe_msg("kaspa-miner/1.0.0").as_bytes())
-        .await?;
+    let agent = format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION"));
+    writer.write_all(subscribe_msg(&agent).as_bytes()).await?;
     writer
         .write_all(authorize_msg(&config.wallet, &config.worker).as_bytes())
         .await?;
@@ -132,6 +135,32 @@ async fn session(
                 writer.write_all(msg.as_bytes()).await?;
             }
         }
+    }
+}
+
+async fn connect_pool(endpoint: &PoolEndpoint) -> Result<Box<dyn AsyncReadWrite>> {
+    let stream = timeout(
+        CONNECT_TIMEOUT,
+        TcpStream::connect((endpoint.host.as_str(), endpoint.port)),
+    )
+    .await
+    .context("pool connection timed out")??;
+
+    stream
+        .set_nodelay(true)
+        .context("enabling TCP_NODELAY for pool connection")?;
+
+    if endpoint.tls {
+        let connector = native_tls::TlsConnector::builder()
+            .build()
+            .context("building TLS connector")?;
+        let connector = tokio_native_tls::TlsConnector::from(connector);
+        let tls_stream = timeout(CONNECT_TIMEOUT, connector.connect(&endpoint.host, stream))
+            .await
+            .context("pool TLS handshake timed out")??;
+        Ok(Box::new(tls_stream))
+    } else {
+        Ok(Box::new(stream))
     }
 }
 
