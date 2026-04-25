@@ -90,6 +90,14 @@ jobs:
   macos-universal:
     name: Build / macos-universal
     runs-on: macos-latest
+    env:
+      APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_APP_SIGN_IDENTITY: ${{ secrets.APPLE_APP_SIGN_IDENTITY }}
+      APPLE_INSTALLER_SIGN_IDENTITY: ${{ secrets.APPLE_INSTALLER_SIGN_IDENTITY }}
 
     steps:
       - name: Checkout
@@ -106,7 +114,7 @@ jobs:
       - name: Build Apple Silicon
         run: cargo build --locked --release --target aarch64-apple-darwin
 
-      - name: Package universal macOS binary
+      - name: Create universal macOS binary
         shell: bash
         run: |
           set -euo pipefail
@@ -115,11 +123,78 @@ jobs:
             target/x86_64-apple-darwin/release/kaspa-miner \
             target/aarch64-apple-darwin/release/kaspa-miner \
             -output package/kaspa-miner
-          codesign --force --timestamp=none --sign - package/kaspa-miner
           chmod +x package/kaspa-miner
           cp README.md config.example.toml fleet.example.toml install-macos.sh package/
           chmod +x package/install-macos.sh
+
+      - name: Import Apple signing certificates
+        if: env.APPLE_CERTIFICATE_P12_BASE64 != '' && env.APPLE_CERTIFICATE_PASSWORD != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/kaspilot-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          CERTIFICATE_PATH="$RUNNER_TEMP/apple-signing.p12"
+          echo "$APPLE_CERTIFICATE_P12_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Sign universal macOS binary with Developer ID
+        if: env.APPLE_APP_SIGN_IDENTITY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          codesign --force --options runtime --timestamp --sign "$APPLE_APP_SIGN_IDENTITY" package/kaspa-miner
+          codesign --verify --verbose=4 package/kaspa-miner
+
+      - name: Ad-hoc sign universal macOS binary
+        if: env.APPLE_APP_SIGN_IDENTITY == ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          codesign --force --timestamp=none --sign - package/kaspa-miner
+
+      - name: Package universal macOS tarball
+        shell: bash
+        run: |
+          set -euo pipefail
           tar -C package -czf dist/kaspa-miner-macos-universal.tar.gz .
+
+      - name: Build signed macOS installer package
+        if: env.APPLE_INSTALLER_SIGN_IDENTITY != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p pkg-root/usr/local/bin
+          cp package/kaspa-miner pkg-root/usr/local/bin/kaspa-miner
+          pkgbuild \
+            --root pkg-root \
+            --identifier com.gryszzz.kaspilot \
+            --version "$VERSION" \
+            --install-location / \
+            --sign "$APPLE_INSTALLER_SIGN_IDENTITY" \
+            dist/kaspa-miner-macos-universal.pkg
+          pkgutil --check-signature dist/kaspa-miner-macos-universal.pkg
+
+      - name: Notarize and staple macOS installer package
+        if: env.APPLE_INSTALLER_SIGN_IDENTITY != '' && env.APPLE_ID != '' && env.APPLE_APP_PASSWORD != '' && env.APPLE_TEAM_ID != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          PKG="dist/kaspa-miner-macos-universal.pkg"
+          xcrun notarytool submit "$PKG" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_APP_PASSWORD" \
+            --wait
+          xcrun stapler staple "$PKG"
+          xcrun stapler validate "$PKG"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

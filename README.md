@@ -61,6 +61,7 @@ https://github.com/gryszzz/KasPilot/releases/latest
 
 Release assets:
 
+- `kaspa-miner-macos-universal.pkg` when Apple signing secrets are configured
 - `kaspa-miner-macos-universal.tar.gz`
 - `kaspa-miner-x86_64-unknown-linux-gnu.tar.gz`
 - `kaspa-miner-x86_64-pc-windows-msvc.zip`
@@ -74,6 +75,13 @@ Each release archive includes the binary, `README.md`, `config.example.toml`, an
 ## First Run
 
 macOS, recommended universal package:
+
+```sh
+sudo installer -pkg kaspa-miner-macos-universal.pkg -target /
+kaspa-miner --version
+```
+
+Unsigned/community macOS tarball:
 
 ```sh
 tar -xzf kaspa-miner-macos-universal.tar.gz
@@ -93,7 +101,7 @@ The installer scripts remove the browser download quarantine/block where the OS 
 - macOS: Developer ID signing plus Apple notarization.
 - Windows: Authenticode signing with a trusted code-signing certificate.
 
-The release workflow already prepares the packages for this path by ad-hoc signing macOS binaries, generating checksums, and keeping platform-specific installers in each archive. Add real signing credentials before broad public distribution if you want the cleanest no-warning install path.
+The release workflow supports the macOS no-warning path when Apple signing secrets are configured. See `docs/macos-no-warning-release.md`.
 
 ## Install From Source
 
