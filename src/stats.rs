@@ -1,13 +1,12 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use std::time::Instant;
 
 /// Shared, lock-free mining statistics.
 pub struct Stats {
-    pub hash_count: Vec<AtomicU64>,  // per-thread hash counters
-    pub accepted:   AtomicU64,
-    pub rejected:   AtomicU64,
-    pub start:      Instant,
+    pub hash_count: Vec<AtomicU64>, // per-thread hash counters
+    pub accepted: AtomicU64,
+    pub rejected: AtomicU64,
+    pub start: Instant,
 }
 
 impl Stats {
@@ -17,7 +16,7 @@ impl Stats {
             hash_count,
             accepted: AtomicU64::new(0),
             rejected: AtomicU64::new(0),
-            start:    Instant::now(),
+            start: Instant::now(),
         }
     }
 
@@ -27,12 +26,19 @@ impl Stats {
         self.hash_count[thread_id].fetch_add(n, Ordering::Relaxed);
     }
 
-    pub fn add_accepted(&self) { self.accepted.fetch_add(1, Ordering::Relaxed); }
-    pub fn add_rejected(&self) { self.rejected.fetch_add(1, Ordering::Relaxed); }
+    pub fn add_accepted(&self) {
+        self.accepted.fetch_add(1, Ordering::Relaxed);
+    }
+    pub fn add_rejected(&self) {
+        self.rejected.fetch_add(1, Ordering::Relaxed);
+    }
 
     /// Total hashes across all threads since start.
     pub fn total_hashes(&self) -> u64 {
-        self.hash_count.iter().map(|c| c.load(Ordering::Relaxed)).sum()
+        self.hash_count
+            .iter()
+            .map(|c| c.load(Ordering::Relaxed))
+            .sum()
     }
 
     pub fn elapsed_secs(&self) -> f64 {
@@ -49,8 +55,12 @@ impl Stats {
         self.hash_count[id].load(Ordering::Relaxed) as f64 / self.elapsed_secs()
     }
 
-    pub fn accepted_count(&self) -> u64 { self.accepted.load(Ordering::Relaxed) }
-    pub fn rejected_count(&self) -> u64 { self.rejected.load(Ordering::Relaxed) }
+    pub fn accepted_count(&self) -> u64 {
+        self.accepted.load(Ordering::Relaxed)
+    }
+    pub fn rejected_count(&self) -> u64 {
+        self.rejected.load(Ordering::Relaxed)
+    }
 }
 
 /// Format H/s into a human-readable string (KH/s, MH/s, GH/s).

@@ -12,7 +12,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Gauge, List, ListItem, Paragraph},
+    widgets::{Block, Borders, List, ListItem, Paragraph},
     Terminal,
 };
 use tokio::sync::{broadcast, mpsc};
@@ -22,11 +22,13 @@ use crate::stats::{format_hashrate, Stats};
 use crate::stratum::{Event, Submission, Work};
 
 struct TuiState {
-    log:       Vec<String>,
-    job_id:    String,
+    log: Vec<String>,
+    job_id: String,
     connected: bool,
-    accepted:  u64,
-    rejected:  u64,
+    accepted: u64,
+    rejected: u64,
+    difficulty: f64,
+    extranonce: String,
 }
 
 impl TuiState {
@@ -40,26 +42,30 @@ impl TuiState {
 
 pub async fn run(config: Arc<Config>, stats: Arc<Stats>) -> Result<()> {
     // Channels
-    let (work_tx, _)         = broadcast::channel::<Work>(16);
-    let (sub_tx,  sub_rx)    = mpsc::channel::<Submission>(64);
+    let (work_tx, _) = broadcast::channel::<Work>(16);
+    let (sub_tx, sub_rx) = mpsc::channel::<Submission>(64);
     let (event_tx, mut ev_rx) = mpsc::channel::<Event>(256);
 
     // Stratum
-    let cfg2 = config.clone(); let st2 = stats.clone();
-    let wtx2 = work_tx.clone(); let etx2 = event_tx.clone();
-    tokio::spawn(async move { crate::stratum::run(cfg2, st2, wtx2, sub_rx, etx2).await; });
+    let cfg2 = config.clone();
+    let st2 = stats.clone();
+    let wtx2 = work_tx.clone();
+    let etx2 = event_tx.clone();
+    tokio::spawn(async move {
+        crate::stratum::run(cfg2, st2, wtx2, sub_rx, etx2).await;
+    });
 
     // Mining threads
     let stop = Arc::new(std::sync::atomic::AtomicBool::new(false));
     for tid in 0..config.threads {
         let mut wrx = work_tx.subscribe();
-        let stx     = sub_tx.clone();
-        let st      = stats.clone();
-        let stp     = stop.clone();
+        let stx = sub_tx.clone();
+        let st = stats.clone();
+        let stp = stop.clone();
+        let threads = config.threads;
+        let batch_size = config.batch_size;
         std::thread::spawn(move || {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all().build().unwrap();
-            rt.block_on(crate::miner::mine_thread_pub(tid, &mut wrx, stx, st, stp));
+            crate::miner::mine_thread_pub(tid, threads, batch_size, &mut wrx, stx, st, stp);
         });
     }
 
@@ -74,27 +80,49 @@ pub async fn run(config: Arc<Config>, stats: Arc<Stats>) -> Result<()> {
         log: vec!["Starting…".into()],
         job_id: "—".into(),
         connected: false,
-        accepted:  0,
-        rejected:  0,
+        accepted: 0,
+        rejected: 0,
+        difficulty: 1.0,
+        extranonce: "-".into(),
     };
 
     let tick = Duration::from_millis(500);
 
     'main: loop {
         // Drain events (non-blocking)
-        loop {
-            match ev_rx.try_recv() {
-                Ok(ev) => {
-                    match &ev {
-                        Event::Connected         => { state.connected = true;  state.push_log("Pool connected".into()); }
-                        Event::Disconnected      => { state.connected = false; state.push_log("Pool disconnected".into()); }
-                        Event::NewJob(id)        => { state.job_id = id.clone(); state.push_log(format!("New job: {id}")); }
-                        Event::ShareAccepted     => { state.accepted += 1; state.push_log("✓ Share accepted".into()); }
-                        Event::ShareRejected(r)  => { state.rejected += 1; state.push_log(format!("✗ Rejected: {r}")); }
-                        Event::Error(msg)        => { state.push_log(format!("ERR {msg}")); }
-                    }
+        while let Ok(ev) = ev_rx.try_recv() {
+            match &ev {
+                Event::Connected => {
+                    state.connected = true;
+                    state.push_log("Pool connected".into());
                 }
-                Err(_) => break,
+                Event::Disconnected => {
+                    state.connected = false;
+                    state.push_log("Pool disconnected".into());
+                }
+                Event::NewJob(id) => {
+                    state.job_id = id.clone();
+                    state.push_log(format!("New job: {id}"));
+                }
+                Event::Difficulty(d) => {
+                    state.difficulty = *d;
+                    state.push_log(format!("Difficulty: {d}"));
+                }
+                Event::Extranonce(p) => {
+                    state.extranonce = p.clone();
+                    state.push_log(format!("Extranonce: {p}"));
+                }
+                Event::ShareAccepted => {
+                    state.accepted += 1;
+                    state.push_log("Share accepted".into());
+                }
+                Event::ShareRejected(r) => {
+                    state.rejected += 1;
+                    state.push_log(format!("Rejected: {r}"));
+                }
+                Event::Error(msg) => {
+                    state.push_log(format!("ERR {msg}"));
+                }
             }
         }
 
@@ -124,9 +152,9 @@ fn draw(f: &mut ratatui::Frame, config: &Config, stats: &Stats, state: &TuiState
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),   // header
-            Constraint::Min(10),     // body
-            Constraint::Length(3),   // footer
+            Constraint::Length(3), // header
+            Constraint::Min(10),   // body
+            Constraint::Length(3), // footer
         ])
         .split(area);
 
@@ -135,22 +163,41 @@ fn draw(f: &mut ratatui::Frame, config: &Config, stats: &Stats, state: &TuiState
     draw_footer(f, rows[2]);
 }
 
-fn draw_header(f: &mut ratatui::Frame, area: Rect, config: &Config, stats: &Stats, state: &TuiState) {
+fn draw_header(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    config: &Config,
+    stats: &Stats,
+    state: &TuiState,
+) {
     let hr = format_hashrate(stats.hashrate());
     let conn_str = if state.connected {
-        Span::styled("● CONNECTED", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD))
+        Span::styled(
+            "● CONNECTED",
+            Style::default()
+                .fg(Color::Green)
+                .add_modifier(Modifier::BOLD),
+        )
     } else {
         Span::styled("○ CONNECTING…", Style::default().fg(Color::Yellow))
     };
 
-    let text = vec![
-        Line::from(vec![
-            Span::styled("⛏  KASPA MINER  ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-            conn_str,
-            Span::raw(format!("   {}  ", config.pool)),
-            Span::styled(hr, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)),
-        ]),
-    ];
+    let text = vec![Line::from(vec![
+        Span::styled(
+            "⛏  KASPA MINER  ",
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        ),
+        conn_str,
+        Span::raw(format!("   {}  ", config.pool)),
+        Span::styled(
+            hr,
+            Style::default()
+                .fg(Color::Magenta)
+                .add_modifier(Modifier::BOLD),
+        ),
+    ])];
 
     let block = Block::default()
         .borders(Borders::ALL)
@@ -170,32 +217,45 @@ fn draw_body(f: &mut ratatui::Frame, area: Rect, config: &Config, stats: &Stats,
     draw_log(f, cols[1], state);
 }
 
-fn draw_left_panel(f: &mut ratatui::Frame, area: Rect, config: &Config, stats: &Stats, state: &TuiState) {
+fn draw_left_panel(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    config: &Config,
+    stats: &Stats,
+    state: &TuiState,
+) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
-        .constraints([Constraint::Length(10), Constraint::Min(5)])
+        .constraints([Constraint::Length(12), Constraint::Min(5)])
         .split(area);
 
     // Stats block
-    let total   = stats.total_hashes();
+    let total = stats.total_hashes();
     let elapsed = stats.elapsed_secs();
-    let acc     = stats.accepted_count();
-    let rej     = stats.rejected_count();
-    let hr      = format_hashrate(stats.hashrate());
+    let acc = stats.accepted_count();
+    let rej = stats.rejected_count();
+    let hr = format_hashrate(stats.hashrate());
 
     let items: Vec<Line> = vec![
-        kv("Hashrate",  &hr),
-        kv("Hashes",    &format!("{total}")),
-        kv("Elapsed",   &fmt_elapsed(elapsed)),
-        kv("Accepted",  &format!("{acc}")),
-        kv("Rejected",  &format!("{rej}")),
-        kv("Job ID",    &state.job_id),
-        kv("Wallet",    &config.wallet[..config.wallet.len().min(28)]),
-        kv("Worker",    &config.worker),
+        kv("Hashrate", &hr),
+        kv("Hashes", &format!("{total}")),
+        kv("Elapsed", &fmt_elapsed(elapsed)),
+        kv("Accepted", &format!("{acc}")),
+        kv("Rejected", &format!("{rej}")),
+        kv("Difficulty", &format!("{:.0}", state.difficulty)),
+        kv("Batch", &format!("{}", config.batch_size)),
+        kv("Extranonce", &state.extranonce),
+        kv("Job ID", &state.job_id),
+        kv("Wallet", &config.wallet[..config.wallet.len().min(28)]),
+        kv("Worker", &config.worker),
     ];
 
-    let p = Paragraph::new(items)
-        .block(Block::default().borders(Borders::ALL).title(" Stats ").border_style(Style::default().fg(Color::Blue)));
+    let p = Paragraph::new(items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Stats ")
+            .border_style(Style::default().fg(Color::Blue)),
+    );
     f.render_widget(p, rows[0]);
 
     // Per-thread hashrates
@@ -206,14 +266,23 @@ fn draw_left_panel(f: &mut ratatui::Frame, area: Rect, config: &Config, stats: &
         })
         .collect();
 
-    let list = List::new(thread_items)
-        .block(Block::default().borders(Borders::ALL).title(" Threads ").border_style(Style::default().fg(Color::Blue)));
+    let list = List::new(thread_items).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Threads ")
+            .border_style(Style::default().fg(Color::Blue)),
+    );
     f.render_widget(list, rows[1]);
 }
 
 fn draw_log(f: &mut ratatui::Frame, area: Rect, state: &TuiState) {
     let h = area.height.saturating_sub(2) as usize;
-    let visible: Vec<ListItem> = state.log.iter().rev().take(h).rev()
+    let visible: Vec<ListItem> = state
+        .log
+        .iter()
+        .rev()
+        .take(h)
+        .rev()
         .map(|msg| {
             let style = if msg.contains('✓') {
                 Style::default().fg(Color::Green)
@@ -228,18 +297,30 @@ fn draw_log(f: &mut ratatui::Frame, area: Rect, state: &TuiState) {
         })
         .collect();
 
-    let list = List::new(visible)
-        .block(Block::default().borders(Borders::ALL).title(" Log ").border_style(Style::default().fg(Color::Blue)));
+    let list = List::new(visible).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .title(" Log ")
+            .border_style(Style::default().fg(Color::Blue)),
+    );
     f.render_widget(list, area);
 }
 
 fn draw_footer(f: &mut ratatui::Frame, area: Rect) {
     let text = Line::from(vec![
-        Span::styled(" [Q]", Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            " [Q]",
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ),
         Span::raw(" quit  "),
     ]);
-    let p = Paragraph::new(text)
-        .block(Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::DarkGray)));
+    let p = Paragraph::new(text).block(
+        Block::default()
+            .borders(Borders::ALL)
+            .border_style(Style::default().fg(Color::DarkGray)),
+    );
     f.render_widget(p, area);
 }
 
@@ -248,7 +329,12 @@ fn draw_footer(f: &mut ratatui::Frame, area: Rect) {
 fn kv(key: &str, val: &str) -> Line<'static> {
     Line::from(vec![
         Span::styled(format!("  {key:<12}"), Style::default().fg(Color::Gray)),
-        Span::styled(val.to_string(), Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
+        Span::styled(
+            val.to_string(),
+            Style::default()
+                .fg(Color::White)
+                .add_modifier(Modifier::BOLD),
+        ),
     ])
 }
 
@@ -257,5 +343,9 @@ fn fmt_elapsed(secs: f64) -> String {
     let h = s / 3600;
     let m = (s % 3600) / 60;
     let s = s % 60;
-    if h > 0 { format!("{h}h {m}m {s}s") } else { format!("{m}m {s}s") }
+    if h > 0 {
+        format!("{h}h {m}m {s}s")
+    } else {
+        format!("{m}m {s}s")
+    }
 }

@@ -1,0 +1,22 @@
+poll_secs = 30
+timeout_ms = 750
+
+[[devices]]
+name = "kas-rig-01"
+host = "192.168.1.101"
+model = "KS-series"
+location = "garage-rack-a"
+expected_hashrate_ths = 9.5
+api_port = 4028
+web_port = 80
+enabled = true
+
+[[devices]]
+name = "kas-rig-02"
+host = "192.168.1.102"
+model = "KS-series"
+location = "garage-rack-a"
+expected_hashrate_ths = 9.5
+api_port = 4028
+web_port = 80
+enabled = true

@@ -1,0 +1,6 @@
+pool = "stratum+tcp://pool.example.com:5555"
+wallet = "kaspa:replace_with_your_wallet_address"
+worker = "rig-01"
+threads = 8
+batch_size = 4096
+reconnect_secs = 5
