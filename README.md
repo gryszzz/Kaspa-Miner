@@ -51,7 +51,7 @@ The production lane is ASIC operations. The CPU lane is for benchmarking, pool t
 | Nonce scan | Extranonce support plus non-overlapping per-thread stride |
 | Operator UI | Ratatui dashboard, plain logs, fleet report, benchmark report |
 | Performance knobs | Release LTO, native CPU build option, configurable batch size, autotune matrix |
-| Releases | Linux, Windows, macOS Intel, macOS Apple Silicon archives from GitHub Actions |
+| Releases | Linux archive, signed Windows archives, notarized macOS universal installer |
 
 ## Download
 
@@ -61,16 +61,13 @@ https://github.com/gryszzz/KasPilot/releases/latest
 
 Release assets:
 
-- `kaspa-miner-macos-universal.pkg` when Apple signing secrets are configured
-- `kaspa-miner-macos-universal.tar.gz`
+- `kaspa-miner-macos-universal.pkg`
 - `kaspa-miner-x86_64-unknown-linux-gnu.tar.gz`
 - `kaspa-miner-x86_64-pc-windows-msvc.zip`
 - `kaspa-miner-aarch64-pc-windows-msvc.zip`
-- `kaspa-miner-x86_64-apple-darwin.tar.gz`
-- `kaspa-miner-aarch64-apple-darwin.tar.gz`
 - `SHA256SUMS.txt`
 
-Each release archive includes the binary, `README.md`, `config.example.toml`, and `fleet.example.toml`. macOS and Windows archives also include a first-run installer that clears the normal downloaded-file block and puts the binary on your user path.
+Each release archive includes the binary, `README.md`, `config.example.toml`, and `fleet.example.toml`. Windows archives also include a first-run installer that puts the binary on your user path.
 
 ## First Run
 
@@ -81,14 +78,6 @@ sudo installer -pkg kaspa-miner-macos-universal.pkg -target /
 kaspa-miner --version
 ```
 
-Unsigned/community macOS tarball:
-
-```sh
-tar -xzf kaspa-miner-macos-universal.tar.gz
-./install-macos.sh
-kaspa-miner --version
-```
-
 Windows:
 
 ```powershell
@@ -96,12 +85,7 @@ Windows:
 kaspa-miner --version
 ```
 
-The installer scripts remove the browser download quarantine/block where the OS allows it. Fully silent first-run behavior on every macOS and Windows machine requires signed releases:
-
-- macOS: Developer ID signing plus Apple notarization.
-- Windows: Authenticode signing with a trusted code-signing certificate.
-
-The release workflow supports the macOS no-warning path when Apple signing secrets are configured. See `docs/macos-no-warning-release.md`.
+Public desktop releases are blocked unless Apple notarization and Windows Authenticode signing secrets are configured. See `docs/macos-no-warning-release.md` and `docs/windows-no-warning-release.md`.
 
 ## Install From Source
 
@@ -304,9 +288,7 @@ The release workflow builds:
 - `x86_64-unknown-linux-gnu`
 - `x86_64-pc-windows-msvc`
 - `aarch64-pc-windows-msvc`
-- `x86_64-apple-darwin`
-- `aarch64-apple-darwin`
-- `macos-universal`
+- `macos-universal.pkg`
 
 ## Roadmap
 

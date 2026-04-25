@@ -10,23 +10,63 @@ permissions:
   contents: write
 
 jobs:
+  release-preflight:
+    name: Release signing preflight
+    runs-on: ubuntu-latest
+    env:
+      APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+      APPLE_APP_SIGN_IDENTITY: ${{ secrets.APPLE_APP_SIGN_IDENTITY }}
+      APPLE_INSTALLER_SIGN_IDENTITY: ${{ secrets.APPLE_INSTALLER_SIGN_IDENTITY }}
+      WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+
+    steps:
+      - name: Require desktop signing credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          require_secret() {
+            local name="$1"
+            local value="${!name:-}"
+            if [[ -z "$value" ]]; then
+              echo "::error::$name is required for no-warning desktop releases"
+              missing=1
+            fi
+          }
+
+          require_secret APPLE_CERTIFICATE_P12_BASE64
+          require_secret APPLE_CERTIFICATE_PASSWORD
+          require_secret APPLE_TEAM_ID
+          require_secret APPLE_ID
+          require_secret APPLE_APP_PASSWORD
+          require_secret APPLE_APP_SIGN_IDENTITY
+          require_secret APPLE_INSTALLER_SIGN_IDENTITY
+          require_secret WINDOWS_CERTIFICATE_PFX_BASE64
+          require_secret WINDOWS_CERTIFICATE_PASSWORD
+
+          if [[ "$missing" -ne 0 ]]; then
+            echo "Release blocked: configure Apple notarization and Windows Authenticode secrets first."
+            exit 1
+          fi
+
   build:
     name: Build / ${{ matrix.target }}
+    needs: release-preflight
     runs-on: ${{ matrix.os }}
+    env:
+      WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+      WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            archive: tar.gz
-            bin: kaspa-miner
-          - os: macos-15-intel
-            target: x86_64-apple-darwin
-            archive: tar.gz
-            bin: kaspa-miner
-          - os: macos-latest
-            target: aarch64-apple-darwin
             archive: tar.gz
             bin: kaspa-miner
           - os: windows-latest
@@ -50,6 +90,30 @@ jobs:
       - name: Build
         run: cargo build --locked --release --target ${{ matrix.target }}
 
+      - name: Sign Windows binary
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $certPath = Join-Path $env:RUNNER_TEMP "kaspilot-signing.pfx"
+          [IO.File]::WriteAllBytes($certPath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX_BASE64))
+          $securePassword = ConvertTo-SecureString -String $env:WINDOWS_CERTIFICATE_PASSWORD -Force -AsPlainText
+          $cert = Import-PfxCertificate -FilePath $certPath -CertStoreLocation Cert:\CurrentUser\My -Password $securePassword |
+            Where-Object { $_.HasPrivateKey } |
+            Select-Object -First 1
+          if ($null -eq $cert) {
+            throw "No private-key certificate was imported from the PFX"
+          }
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" |
+            Sort-Object FullName |
+            Select-Object -Last 1
+          if ($null -eq $signtool) {
+            throw "signtool.exe was not found"
+          }
+          $binary = "target/${{ matrix.target }}/release/${{ matrix.bin }}"
+          & $signtool.FullName sign /fd SHA256 /td SHA256 /tr http://timestamp.digicert.com /sha1 $cert.Thumbprint $binary
+          & $signtool.FullName verify /pa /v $binary
+
       - name: Stage package
         shell: bash
         run: |
@@ -58,11 +122,6 @@ jobs:
           cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" package/
           cp README.md config.example.toml fleet.example.toml package/
           case "${{ matrix.target }}" in
-            *apple-darwin)
-              cp install-macos.sh package/
-              chmod +x package/install-macos.sh
-              codesign --force --timestamp=none --sign - package/kaspa-miner
-              ;;
             *windows-msvc)
               cp install-windows.cmd install-windows.ps1 package/
               ;;
@@ -89,6 +148,7 @@ jobs:
 
   macos-universal:
     name: Build / macos-universal
+    needs: release-preflight
     runs-on: macos-latest
     env:
       APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
@@ -124,8 +184,6 @@ jobs:
             target/aarch64-apple-darwin/release/kaspa-miner \
             -output package/kaspa-miner
           chmod +x package/kaspa-miner
-          cp README.md config.example.toml fleet.example.toml install-macos.sh package/
-          chmod +x package/install-macos.sh
 
       - name: Import Apple signing certificates
         if: env.APPLE_CERTIFICATE_P12_BASE64 != '' && env.APPLE_CERTIFICATE_PASSWORD != ''
@@ -145,32 +203,20 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
       - name: Sign universal macOS binary with Developer ID
-        if: env.APPLE_APP_SIGN_IDENTITY != ''
         shell: bash
         run: |
           set -euo pipefail
           codesign --force --options runtime --timestamp --sign "$APPLE_APP_SIGN_IDENTITY" package/kaspa-miner
           codesign --verify --verbose=4 package/kaspa-miner
 
-      - name: Ad-hoc sign universal macOS binary
-        if: env.APPLE_APP_SIGN_IDENTITY == ''
-        shell: bash
-        run: |
-          set -euo pipefail
-          codesign --force --timestamp=none --sign - package/kaspa-miner
-
-      - name: Package universal macOS tarball
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar -C package -czf dist/kaspa-miner-macos-universal.tar.gz .
-
       - name: Build signed macOS installer package
-        if: env.APPLE_INSTALLER_SIGN_IDENTITY != ''
         shell: bash
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          if [[ "$VERSION" == "$GITHUB_REF_NAME" ]]; then
+            VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)"
+          fi
           mkdir -p pkg-root/usr/local/bin
           cp package/kaspa-miner pkg-root/usr/local/bin/kaspa-miner
           pkgbuild \
@@ -183,7 +229,6 @@ jobs:
           pkgutil --check-signature dist/kaspa-miner-macos-universal.pkg
 
       - name: Notarize and staple macOS installer package
-        if: env.APPLE_INSTALLER_SIGN_IDENTITY != '' && env.APPLE_ID != '' && env.APPLE_APP_PASSWORD != '' && env.APPLE_TEAM_ID != ''
         shell: bash
         run: |
           set -euo pipefail

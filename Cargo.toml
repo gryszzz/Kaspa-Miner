@@ -1,6 +1,6 @@
 [package]
 name = "kaspa-miner"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 description = "KASPilot: Kaspa ASIC fleet controller with Common Stratum CPU dev miner and kHeavyHash benchmark tools"
 authors = ["KASPilot Contributors"]

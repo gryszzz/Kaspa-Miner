@@ -37,7 +37,7 @@ Developer ID Application: Your Name (TEAMID)
 Developer ID Installer: Your Name (TEAMID)
 ```
 
-After those secrets are configured, pushing a `v*` tag will produce:
+The release workflow blocks public desktop releases until these secrets are configured. After they are configured, pushing a `v*` tag will produce:
 
 ```text
 kaspa-miner-macos-universal.pkg
