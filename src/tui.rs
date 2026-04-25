@@ -184,7 +184,7 @@ fn draw_header(
 
     let text = vec![Line::from(vec![
         Span::styled(
-            "⛏  KASPA MINER  ",
+            "KASPILOT // KASPA OPS  ",
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),

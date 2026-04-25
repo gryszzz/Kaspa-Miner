@@ -7,26 +7,43 @@
 | . \  / ___ \ ___) |  __/| | | (_) | |_
 |_|\_\/_/   \_\____/|_|   |_|_|\___/ \__|
 
-Kaspa ASIC fleet controller / CPU benchmark miner / Rust
+KASPA OPS TERMINAL / ASIC FLEET CONTROL / CPU DEV MINER
 ```
 
-KASPilot is a Kaspa operations console with two lanes: a vendor-neutral ASIC fleet controller for production rigs, and a Kaspa-only CPU miner/benchmark for development, pool validation, and protocol testing. The CPU miner is built around the current Kaspa Common Stratum flow: `mining.set_difficulty`, `mining.set_extranonce`, compact `mining.notify` jobs, and 8-byte nonce submission.
+**KASPilot** is a high-signal Kaspa operations console for serious mining setups: ASIC fleet visibility, CGMiner-compatible telemetry, Kaspa Common Stratum protocol tooling, and a CPU kHeavyHash benchmark/dev miner for validation work.
 
-> Reality check: profitable Kaspa mining is ASIC territory. The CPU path stays useful as a dev miner and benchmark harness; the production direction is fleet control, monitoring, and ASIC operations.
+It is intentionally Kaspa-only. The production lane is ASIC fleet control. The CPU lane is for development, pool testing, benchmarking, and protocol validation.
 
-## Feature Grid
+> Profitable Kaspa mining is ASIC territory. KASPilot keeps the CPU miner polished, but positions it honestly as a dev/benchmark tool.
+
+## Tags
+
+`kaspa` `kheavyhash` `asic-mining` `stratum` `cgminer-api` `fleet-monitoring` `cpu-benchmark` `rust` `tui` `mining-ops`
+
+## Core Modes
+
+| Mode | Command | Purpose |
+| --- | --- | --- |
+| ASIC fleet controller | `--fleet` | Monitor ASIC reachability, live TH/s, temp, fan, uptime, pool, accepted/rejected shares |
+| CPU benchmark | `--benchmark` | Measure local kHeavyHash throughput without a pool |
+| CPU autotune | `--tune` | Sweep thread and batch settings, then recommend the best config |
+| CPU dev miner | default / `--no-tui` | Kaspa Common Stratum CPU mining for dev and validation |
+
+## Capabilities
 
 | Layer | Status |
 | --- | --- |
 | Coin target | Kaspa only |
-| ASIC fleet | Vendor-neutral reachability and expected TH/s monitor |
-| Algorithm | kHeavyHash PoW path using `kaspa-hashes` primitives |
+| ASIC telemetry | CGMiner-compatible `summary`, `pools`, `devs`, `stats` over TCP |
+| Fleet inventory | TOML device registry with model, location, API/web ports, expected TH/s |
+| Hash algorithm | kHeavyHash PoW path using `kaspa-hashes` primitives |
 | Pool protocol | Kaspa Common Stratum over TCP |
+| Job format | Compact `mining.notify` header parsing |
 | Difficulty | Pool share target from `mining.set_difficulty` |
 | Nonce space | Extranonce prefix plus per-thread nonce scanning |
 | Runtime | Multi-threaded CPU workers with non-overlapping nonce stride |
-| UI | Ratatui terminal dashboard or plain log mode |
-| Ops | Reconnect loop, share accept/reject counters, benchmark mode |
+| Interface | Ratatui dashboard, plain logs, fleet report, benchmark report |
+| Optimization | Release LTO, native CPU build support, configurable batch size, autotune matrix |
 
 ## Quick Start
 
@@ -35,6 +52,47 @@ cargo build --release
 cp config.example.toml config.toml
 cp fleet.example.toml fleet.toml
 ```
+
+For best local CPU benchmark numbers:
+
+```sh
+RUSTFLAGS="-C target-cpu=native" cargo build --release
+```
+
+## ASIC Fleet
+
+Edit `fleet.toml`:
+
+```toml
+poll_secs = 30
+timeout_ms = 750
+
+[[devices]]
+name = "kas-rig-01"
+host = "192.168.1.101"
+model = "KS-series"
+location = "rack-a"
+expected_hashrate_ths = 9.5
+api_port = 4028
+web_port = 80
+enabled = true
+```
+
+Poll once:
+
+```sh
+./target/release/kaspa-miner --fleet --fleet-once
+```
+
+Run continuously:
+
+```sh
+./target/release/kaspa-miner --fleet
+```
+
+If an ASIC exposes a CGMiner-compatible API on `api_port`, KASPilot reads normalized live TH/s, average TH/s, temperature, fan RPM, uptime, pool URL, accepted shares, and rejected shares. If a unit only exposes a web UI, leave `api_port` unset and use `web_port` for reachability.
+
+## CPU Dev Miner
 
 Edit `config.toml`:
 
@@ -47,110 +105,84 @@ batch_size = 4096
 reconnect_secs = 5
 ```
 
-Run the dashboard:
+Dashboard:
 
 ```sh
 ./target/release/kaspa-miner
 ```
 
-Run ASIC fleet controller once:
-
-```sh
-./target/release/kaspa-miner --fleet --fleet-once
-```
-
-Run ASIC fleet controller continuously:
-
-```sh
-./target/release/kaspa-miner --fleet
-```
-
-Run plain logs:
+Plain logs:
 
 ```sh
 ./target/release/kaspa-miner --no-tui
 ```
 
-Override config from the command line:
+Override config from CLI:
 
 ```sh
 ./target/release/kaspa-miner \
   --pool stratum+tcp://pool.example.com:5555 \
   --wallet kaspa:your_wallet_address \
   --worker rig-01 \
-  --threads 8
+  --threads 8 \
+  --batch-size 4096 \
+  --no-tui
 ```
 
-Benchmark local hashing without a pool:
+## Benchmark And Autotune
+
+Single benchmark:
 
 ```sh
-./target/release/kaspa-miner --benchmark --threads 8 --bench-seconds 15
+./target/release/kaspa-miner --benchmark --threads 8 --batch-size 4096 --bench-seconds 15
 ```
 
-Build for the current machine:
+Autotune:
 
 ```sh
-RUSTFLAGS="-C target-cpu=native" cargo build --release
+./target/release/kaspa-miner --tune --tune-max-threads 8 --tune-seconds 5
 ```
 
-## CLI
+Custom batch sweep:
+
+```sh
+./target/release/kaspa-miner \
+  --tune \
+  --tune-max-threads 12 \
+  --tune-batches 1024,4096,16384,65536 \
+  --tune-seconds 8
+```
+
+Tuning priorities:
+
+- `threads`: start with physical performance cores; too many threads can reduce hashrate through scheduling and cache pressure.
+- `batch_size`: higher values reduce bookkeeping overhead, lower values check pool work more often for 10 BPS-era freshness.
+- Thermals: keep clocks stable; throttling erases hashrate.
+- Pool latency: use a nearby pool endpoint to reduce stale shares.
+- Production logs: use `--no-tui` under `systemd`, `launchd`, Docker, or tmux.
+
+## CLI Reference
 
 ```text
---config <PATH>       Config file path, default: config.toml
+--config <PATH>       CPU miner config path, default: config.toml
 --pool <URL>          stratum+tcp://host:port
 --wallet <ADDRESS>    kaspa: or kaspatest: address
 --worker <NAME>       Worker name appended to wallet for pool login
 --threads <N>         CPU worker threads
 --batch-size <N>      Nonces per thread before checking pool work
 --no-tui              Plain terminal logs
---benchmark           Offline hashrate benchmark
+--benchmark           Offline kHeavyHash benchmark
 --bench-seconds <N>   Benchmark duration
+--tune                Sweep CPU settings and rank local hashrate
+--tune-seconds <N>    Per-test duration for --tune
+--tune-max-threads N  Maximum thread count for --tune
+--tune-batches LIST   Comma-separated batch sizes for --tune
 --fleet               ASIC fleet controller mode
 --fleet-config <PATH> Fleet config path, default: fleet.toml
 --fleet-once          Poll fleet once and exit
 ```
 
-## ASIC Fleet
-
-`fleet.toml` describes production devices without locking the project to one vendor API:
-
-```toml
-poll_secs = 30
-timeout_ms = 750
-
-[[devices]]
-name = "kas-rig-01"
-host = "192.168.1.101"
-model = "KS-series"
-location = "garage-rack-a"
-expected_hashrate_ths = 9.5
-api_port = 4028
-web_port = 80
-enabled = true
-```
-
-Current fleet mode checks API and web-port reachability, reports online/offline status, and totals reachable expected TH/s. This is the base layer for vendor adapters that can read real hashrate, chip temps, fan RPM, pool URL, rejected shares, and uptime.
-
-## Optimization
-
-For raw CPU hashrate, start here:
-
-```sh
-RUSTFLAGS="-C target-cpu=native" cargo build --release
-./target/release/kaspa-miner --benchmark --threads 4 --batch-size 4096 --bench-seconds 15
-./target/release/kaspa-miner --benchmark --threads 8 --batch-size 4096 --bench-seconds 15
-./target/release/kaspa-miner --benchmark --threads 8 --batch-size 16384 --bench-seconds 15
-```
-
-Tune in this order:
-
-- `threads`: usually physical performance cores first; too many threads can reduce hashrate through cache pressure and scheduling overhead.
-- `batch_size`: higher values reduce bookkeeping overhead, lower values react faster to fresh 10 BPS work. `4096` is the default balance.
-- Power profile: run plugged in, disable low-power modes, and keep thermals under control so clocks do not collapse.
-- Pool distance: choose a low-latency pool endpoint; stale shares erase any local hashrate win.
-- Plain logs: use `--no-tui` for long-running production processes.
-
-## Protocol Notes
+## Kaspa Stratum Notes
 
 KASPilot expects the common two-parameter Kaspa notify payload:
 
@@ -158,7 +190,7 @@ KASPilot expects the common two-parameter Kaspa notify payload:
 mining.notify params: ["jobId", "headerHash"]
 ```
 
-The `headerHash` is parsed as 40 bytes:
+The `headerHash` is parsed as:
 
 ```text
 32 bytes pre_pow_hash || 8 bytes timestamp_le
@@ -174,19 +206,29 @@ The nonce is the full 8-byte hex nonce, including any pool-provided extranonce p
 
 ## Production Checklist
 
-- Use a trusted pool endpoint and confirm it supports Kaspa Common Stratum.
-- Keep your wallet address out of shell history by using `config.toml` for regular operation.
-- Pin `threads` below total CPU capacity if the machine needs to stay responsive.
-- Use `--no-tui` under process managers such as `systemd`, `launchd`, Docker, or tmux logs.
-- Prefer release builds; debug builds are not representative for mining performance.
-- Monitor rejected shares. Repeated `Low difficulty share`, `DuplicateShare`, or `JobNotFound` errors usually indicate protocol, stale-work, or clock/pool issues.
+- Confirm your pool supports Kaspa Common Stratum.
+- Keep wallet addresses in `config.toml` instead of shell history.
+- Keep ASIC management ports on a trusted LAN or VPN.
+- Do not expose CGMiner API ports directly to the public internet.
+- Use `--fleet` for ASIC operations and CPU mode for protocol validation.
+- Use release builds for benchmarks and production binaries.
+- Watch rejected shares. Repeated low-difficulty, duplicate, or stale share errors usually indicate pool/protocol/latency issues.
+
+## Roadmap
+
+- Vendor-specific ASIC adapters for richer IceRiver/Bitmain-style telemetry.
+- JSON/CSV export for fleet dashboards.
+- Alert thresholds for offline rigs, high temperature, fan faults, and reject spikes.
+- Pool failover view and worker grouping.
+- Optional local web dashboard.
 
 ## References
 
 - Kaspa Common Stratum Protocol: https://file1.iceriver.io/protocols/KAS-Miner-Mining-Protocol-EN.pdf
 - Rusty Kaspa PoW primitives: https://docs.rs/kaspa-pow
 - Kaspa hash primitives: https://docs.rs/kaspa-hashes
+- CGMiner-compatible API pattern: https://docs.luxor88.com/firmware/api/cgminer/summary
 
 ## License
 
-No license file is included yet. Add one before distributing binaries.
+`Cargo.toml` declares `MIT OR Apache-2.0`. Add matching license files before public distribution.

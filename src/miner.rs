@@ -16,6 +16,15 @@ use crate::stratum::{Event, Submission, Work};
 /// frequently enough to limit stale scanning on CPU-class hashrates.
 pub const DEFAULT_BATCH_SIZE: u64 = 4_096;
 
+#[derive(Debug, Clone)]
+pub struct BenchmarkResult {
+    pub threads: usize,
+    pub batch_size: u64,
+    pub hashes: u64,
+    pub seconds: f64,
+    pub hashrate: f64,
+}
+
 /// Spin up all worker threads and the stratum client; return when killed.
 pub async fn run(config: Arc<Config>, stats: Arc<Stats>) -> anyhow::Result<()> {
     let (work_tx, _work_rx) = broadcast::channel::<Work>(16);
@@ -168,6 +177,83 @@ fn mine_thread(
 }
 
 pub async fn benchmark(threads: usize, batch_size: u64, duration: Duration) -> anyhow::Result<()> {
+    let result = benchmark_once(threads, batch_size, duration).await?;
+
+    println!(
+        "KASPilot benchmark: {} across {} threads, batch {}, {} hashes in {:.1}s",
+        format_hashrate(result.hashrate),
+        result.threads,
+        result.batch_size,
+        result.hashes,
+        result.seconds
+    );
+    Ok(())
+}
+
+pub async fn tune(
+    max_threads: usize,
+    batch_sizes: &[u64],
+    duration: Duration,
+) -> anyhow::Result<()> {
+    if max_threads == 0 {
+        anyhow::bail!("Tune max threads must be at least 1");
+    }
+    if batch_sizes.is_empty() {
+        anyhow::bail!("Tune requires at least one batch size");
+    }
+
+    let mut results = Vec::new();
+    let thread_counts = tune_thread_counts(max_threads);
+
+    println!(
+        "Autotune matrix: threads {:?}, batches {:?}, {}s each\n",
+        thread_counts,
+        batch_sizes,
+        duration.as_secs().max(1)
+    );
+
+    for threads in thread_counts {
+        for &batch_size in batch_sizes {
+            let result = benchmark_once(threads, batch_size, duration).await?;
+            println!(
+                "  {:>2} threads | batch {:>6} | {:>12}",
+                result.threads,
+                result.batch_size,
+                format_hashrate(result.hashrate)
+            );
+            results.push(result);
+        }
+    }
+
+    results.sort_by(|a, b| b.hashrate.total_cmp(&a.hashrate));
+
+    println!("\nTop settings");
+    println!("{:<8} {:<10} {:>14}", "threads", "batch", "hashrate");
+    println!("{}", "-".repeat(36));
+    for result in results.iter().take(8) {
+        println!(
+            "{:<8} {:<10} {:>14}",
+            result.threads,
+            result.batch_size,
+            format_hashrate(result.hashrate)
+        );
+    }
+
+    if let Some(best) = results.first() {
+        println!(
+            "\nRecommended config: threads = {}, batch_size = {}",
+            best.threads, best.batch_size
+        );
+    }
+
+    Ok(())
+}
+
+async fn benchmark_once(
+    threads: usize,
+    batch_size: u64,
+    duration: Duration,
+) -> anyhow::Result<BenchmarkResult> {
     if threads == 0 {
         anyhow::bail!("Thread count must be at least 1");
     }
@@ -205,12 +291,17 @@ pub async fn benchmark(threads: usize, batch_size: u64, duration: Duration) -> a
         let _ = handle.join();
     }
 
-    println!(
-        "KASPilot benchmark: {} across {threads} threads, batch {batch_size}, in {:.1}s",
-        format_hashrate(stats.total_hashes() as f64 / start.elapsed().as_secs_f64().max(0.001)),
-        start.elapsed().as_secs_f64()
-    );
-    Ok(())
+    let seconds = start.elapsed().as_secs_f64().max(0.001);
+    let hashes = stats.total_hashes();
+    let hashrate = hashes as f64 / seconds;
+
+    Ok(BenchmarkResult {
+        threads,
+        batch_size,
+        hashes,
+        seconds,
+        hashrate,
+    })
 }
 
 fn benchmark_seed(tid: usize) -> [u8; 32] {
@@ -220,4 +311,17 @@ fn benchmark_seed(tid: usize) -> [u8; 32] {
     seed[16..24].copy_from_slice(&0xd1b5_4a32_d192_ed03u64.to_le_bytes());
     seed[24..32].copy_from_slice(&0x94d0_49bb_1331_11ebu64.to_le_bytes());
     seed
+}
+
+fn tune_thread_counts(max_threads: usize) -> Vec<usize> {
+    let mut counts = vec![1];
+    let mut value = 2;
+    while value < max_threads {
+        counts.push(value);
+        value *= 2;
+    }
+    if !counts.contains(&max_threads) {
+        counts.push(max_threads);
+    }
+    counts
 }

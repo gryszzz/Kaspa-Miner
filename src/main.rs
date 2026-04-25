@@ -6,6 +6,7 @@ use anyhow::Result;
 use clap::Parser;
 
 mod algorithm;
+mod branding;
 mod config;
 mod fleet;
 mod miner;
@@ -55,9 +56,25 @@ struct Cli {
     #[arg(long)]
     benchmark: bool,
 
+    /// Sweep CPU thread/batch combinations and rank local hashrate.
+    #[arg(long)]
+    tune: bool,
+
     /// Benchmark duration in seconds.
     #[arg(long, default_value_t = 10)]
     bench_seconds: u64,
+
+    /// Per-test duration in seconds for --tune.
+    #[arg(long, default_value_t = 5)]
+    tune_seconds: u64,
+
+    /// Maximum thread count to test during --tune.
+    #[arg(long)]
+    tune_max_threads: Option<usize>,
+
+    /// Comma-separated batch sizes to test during --tune.
+    #[arg(long, value_delimiter = ',', default_value = "1024,4096,16384,65536")]
+    tune_batches: Vec<u64>,
 
     /// Run ASIC fleet controller mode instead of CPU mining.
     #[arg(long)]
@@ -77,11 +94,25 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if cli.fleet {
+        branding::print_banner("ASIC FLEET CONTROL");
         fleet::run(&cli.fleet_config, cli.fleet_once).await?;
         return Ok(());
     }
 
+    if cli.tune {
+        branding::print_banner("CPU AUTOTUNE");
+        let max_threads = cli.tune_max_threads.unwrap_or_else(num_cpus::get);
+        miner::tune(
+            max_threads,
+            &cli.tune_batches,
+            Duration::from_secs(cli.tune_seconds),
+        )
+        .await?;
+        return Ok(());
+    }
+
     if cli.benchmark {
+        branding::print_banner("CPU BENCHMARK");
         let threads = cli.threads.unwrap_or_else(num_cpus::get);
         let batch_size = cli.batch_size.unwrap_or(miner::DEFAULT_BATCH_SIZE);
         miner::benchmark(threads, batch_size, Duration::from_secs(cli.bench_seconds)).await?;
@@ -99,6 +130,7 @@ async fn main() -> Result<()> {
 
     let stats = Arc::new(Stats::new(config.threads));
     if cli.no_tui {
+        branding::print_banner("CPU MINER");
         miner::run(config, stats).await
     } else {
         tui::run(config, stats).await
