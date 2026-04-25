@@ -61,12 +61,39 @@ https://github.com/gryszzz/KasPilot/releases/latest
 
 Release assets:
 
+- `kaspa-miner-macos-universal.tar.gz`
 - `kaspa-miner-x86_64-unknown-linux-gnu.tar.gz`
 - `kaspa-miner-x86_64-pc-windows-msvc.zip`
+- `kaspa-miner-aarch64-pc-windows-msvc.zip`
 - `kaspa-miner-x86_64-apple-darwin.tar.gz`
 - `kaspa-miner-aarch64-apple-darwin.tar.gz`
+- `SHA256SUMS.txt`
 
-Each release archive includes the binary, `README.md`, `config.example.toml`, and `fleet.example.toml`.
+Each release archive includes the binary, `README.md`, `config.example.toml`, and `fleet.example.toml`. macOS and Windows archives also include a first-run installer that clears the normal downloaded-file block and puts the binary on your user path.
+
+## First Run
+
+macOS, recommended universal package:
+
+```sh
+tar -xzf kaspa-miner-macos-universal.tar.gz
+./install-macos.sh
+kaspa-miner --version
+```
+
+Windows:
+
+```powershell
+.\install-windows.cmd
+kaspa-miner --version
+```
+
+The installer scripts remove the browser download quarantine/block where the OS allows it. Fully silent first-run behavior on every macOS and Windows machine requires signed releases:
+
+- macOS: Developer ID signing plus Apple notarization.
+- Windows: Authenticode signing with a trusted code-signing certificate.
+
+The release workflow already prepares the packages for this path by ad-hoc signing macOS binaries, generating checksums, and keeping platform-specific installers in each archive. Add real signing credentials before broad public distribution if you want the cleanest no-warning install path.
 
 ## Install From Source
 
@@ -268,8 +295,10 @@ The release workflow builds:
 
 - `x86_64-unknown-linux-gnu`
 - `x86_64-pc-windows-msvc`
+- `aarch64-pc-windows-msvc`
 - `x86_64-apple-darwin`
 - `aarch64-apple-darwin`
+- `macos-universal`
 
 ## Roadmap
 
@@ -278,7 +307,7 @@ The release workflow builds:
 - Alert thresholds for offline rigs, high temperature, fan faults, and reject spikes.
 - Pool failover visibility and worker grouping.
 - Optional local web dashboard.
-- Signed release artifacts and checksums.
+- Apple notarization and Windows Authenticode signing.
 
 ## References
 

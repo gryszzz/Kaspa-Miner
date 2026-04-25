@@ -33,6 +33,10 @@ jobs:
             target: x86_64-pc-windows-msvc
             archive: zip
             bin: kaspa-miner.exe
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
+            archive: zip
+            bin: kaspa-miner.exe
 
     steps:
       - name: Checkout
@@ -53,6 +57,16 @@ jobs:
           mkdir -p package dist
           cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" package/
           cp README.md config.example.toml fleet.example.toml package/
+          case "${{ matrix.target }}" in
+            *apple-darwin)
+              cp install-macos.sh package/
+              chmod +x package/install-macos.sh
+              codesign --force --timestamp=none --sign - package/kaspa-miner
+              ;;
+            *windows-msvc)
+              cp install-windows.cmd install-windows.ps1 package/
+              ;;
+          esac
 
       - name: Package tarball
         if: matrix.archive == 'tar.gz'
@@ -73,9 +87,49 @@ jobs:
           name: kaspa-miner-${{ matrix.target }}
           path: dist/*
 
+  macos-universal:
+    name: Build / macos-universal
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Build Intel
+        run: cargo build --locked --release --target x86_64-apple-darwin
+
+      - name: Build Apple Silicon
+        run: cargo build --locked --release --target aarch64-apple-darwin
+
+      - name: Package universal macOS binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p package dist
+          lipo -create \
+            target/x86_64-apple-darwin/release/kaspa-miner \
+            target/aarch64-apple-darwin/release/kaspa-miner \
+            -output package/kaspa-miner
+          codesign --force --timestamp=none --sign - package/kaspa-miner
+          chmod +x package/kaspa-miner
+          cp README.md config.example.toml fleet.example.toml install-macos.sh package/
+          chmod +x package/install-macos.sh
+          tar -C package -czf dist/kaspa-miner-macos-universal.tar.gz .
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaspa-miner-macos-universal
+          path: dist/*
+
   publish:
     name: Publish GitHub release
-    needs: build
+    needs: [build, macos-universal]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
 
@@ -85,6 +139,13 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum * > SHA256SUMS.txt
 
       - name: Create release
         uses: softprops/action-gh-release@v2
