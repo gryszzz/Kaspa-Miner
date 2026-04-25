@@ -18,7 +18,7 @@ jobs:
             target: x86_64-unknown-linux-gnu
             archive: tar.gz
             bin: kaspa-miner
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
             archive: tar.gz
             bin: kaspa-miner
