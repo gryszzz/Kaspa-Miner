@@ -89,6 +89,10 @@ struct Cli {
     /// Poll fleet once and exit.
     #[arg(long)]
     fleet_once: bool,
+
+    /// Render the mining cockpit preview SVG and exit.
+    #[arg(long, hide = true)]
+    render_ui_preview: Option<PathBuf>,
 }
 
 #[tokio::main]
@@ -118,6 +122,12 @@ async fn main() -> Result<()> {
         let threads = cli.threads.unwrap_or_else(num_cpus::get);
         let batch_size = cli.batch_size.unwrap_or(miner::DEFAULT_BATCH_SIZE);
         miner::benchmark(threads, batch_size, Duration::from_secs(cli.bench_seconds)).await?;
+        return Ok(());
+    }
+
+    if let Some(path) = cli.render_ui_preview {
+        tui::write_preview_svg(&path)?;
+        println!("Rendered mining cockpit preview to {}", path.display());
         return Ok(());
     }
 

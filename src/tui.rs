@@ -1,4 +1,5 @@
 use std::collections::VecDeque;
+use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -9,7 +10,8 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use ratatui::{
-    backend::CrosstermBackend,
+    backend::{CrosstermBackend, TestBackend},
+    buffer::Buffer,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
@@ -24,6 +26,8 @@ use crate::stratum::{Event, Submission, Work};
 
 const MAX_LOG_LINES: usize = 240;
 const MAX_HASHRATE_SAMPLES: usize = 90;
+const PREVIEW_WIDTH: u16 = 128;
+const PREVIEW_HEIGHT: u16 = 38;
 
 struct TerminalGuard;
 
@@ -175,6 +179,21 @@ pub async fn run(config: Arc<Config>, stats: Arc<Stats>) -> Result<()> {
     Ok(())
 }
 
+pub fn write_preview_svg(path: &Path) -> Result<()> {
+    std::fs::write(path, render_preview_svg()?)?;
+    Ok(())
+}
+
+fn render_preview_svg() -> Result<String> {
+    let config = preview_config();
+    let stats = preview_stats(config.threads);
+    let state = preview_state();
+    let backend = TestBackend::new(PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    let mut terminal = Terminal::new(backend)?;
+    terminal.draw(|f| draw(f, &config, &stats, &state))?;
+    Ok(buffer_to_svg(terminal.backend().buffer()))
+}
+
 fn handle_event(state: &mut TuiState, ev: Event) {
     match ev {
         Event::Connected => {
@@ -214,6 +233,56 @@ fn handle_event(state: &mut TuiState, ev: Event) {
             state.push_log("err", msg);
         }
     }
+}
+
+fn preview_config() -> Config {
+    Config {
+        pool: "stratum+ssl://kaspa.pool.example:5555".into(),
+        wallet: "kaspa:qrx3v6m4r9demoaddress7v0pilot9z6".into(),
+        worker: "rig-preview-01".into(),
+        threads: 8,
+        batch_size: 4096,
+        reconnect_secs: 5,
+    }
+}
+
+fn preview_stats(threads: usize) -> Stats {
+    let stats = Stats::new(threads);
+    let samples = [
+        92_000, 88_000, 95_000, 81_000, 104_000, 99_000, 87_000, 96_000,
+    ];
+    for (id, hashes) in samples.iter().enumerate().take(threads) {
+        stats.add_hashes(id, *hashes);
+    }
+    for _ in 0..14 {
+        stats.add_accepted();
+    }
+    stats
+}
+
+fn preview_state() -> TuiState {
+    let now = Instant::now();
+    let mut state = TuiState::new();
+    state.connected = true;
+    state.job_id = "82df19b72b88e7ca9f014e96a7f6c001".into();
+    state.difficulty = 128.0;
+    state.extranonce = "00a7ff12".into();
+    state.current_hashrate = 22_840.0;
+    state.peak_hashrate = 28_110.0;
+    state.last_job_at = Some(now - Duration::from_secs(2));
+    state.last_share_at = Some(now - Duration::from_secs(4));
+    state.tick = 42;
+    state.hashrate_history = VecDeque::from(vec![
+        14_200, 18_600, 16_400, 22_800, 20_300, 24_900, 19_800, 26_500, 23_100, 28_110, 22_840,
+    ]);
+    state.log.clear();
+    state.push_log("pool", "connected");
+    state.push_log("diff", "128.0000");
+    state.push_log("job", "new work 82df19b72b88e7ca9f014e9");
+    state.push_log("share", "accepted");
+    state.push_log("share", "accepted");
+    state.push_log("nonce", "prefix 00a7ff12");
+    state
 }
 
 fn draw(f: &mut ratatui::Frame, config: &Config, stats: &Stats, state: &TuiState) {
@@ -686,4 +755,110 @@ fn classify_reject(reason: &str) -> String {
         "pool rejected"
     };
     format!("{label}: {}", truncate(reason, 72))
+}
+
+fn buffer_to_svg(buffer: &Buffer) -> String {
+    let cell_width = 9u16;
+    let cell_height = 18u16;
+    let pad = 26u16;
+    let width = buffer.area.width * cell_width + pad * 2;
+    let height = buffer.area.height * cell_height + pad * 2;
+    let content_width = width - 24;
+    let content_height = height - 24;
+    let mut svg = String::new();
+
+    svg.push_str(&format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="title desc">
+  <title id="title">KASPilot mining CLI preview</title>
+  <desc id="desc">Actual Ratatui-rendered preview frame of the KASPilot real-time Kaspa mining cockpit.</desc>
+  <defs>
+    <linearGradient id="scanline" x1="0" x2="0" y1="0" y2="1">
+      <stop offset="0%" stop-color="#28e7ff" stop-opacity="0"/>
+      <stop offset="50%" stop-color="#28e7ff" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#28e7ff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <rect width="100%" height="100%" fill="#050814"/>
+  <rect x="12" y="12" width="{content_width}" height="{content_height}" rx="10" fill="#07101f" stroke="#28e7ff" stroke-opacity="0.4"/>
+  <rect class="scan" x="18" y="-90" width="{}" height="96" fill="url(#scanline)"/>
+  <style>
+    .term {{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, &quot;Liberation Mono&quot;, monospace; font-size: 15px; dominant-baseline: text-before-edge; white-space: pre; }}
+    .bold {{ font-weight: 800; }}
+    .scan {{ animation: scan 4.5s linear infinite; }}
+    @keyframes scan {{
+      0% {{ transform: translateY(0); opacity: 0; }}
+      10% {{ opacity: 1; }}
+      90% {{ opacity: 0.7; }}
+      100% {{ transform: translateY({height}px); opacity: 0; }}
+    }}
+  </style>
+"##,
+        width - 36,
+    ));
+
+    for y in 0..buffer.area.height {
+        let mut x = 0;
+        while x < buffer.area.width {
+            let cell = &buffer[(x, y)];
+            let bold = if cell.modifier.contains(Modifier::BOLD) {
+                " bold"
+            } else {
+                ""
+            };
+            let mut text = String::new();
+            let start_x = x;
+            let fg = cell.fg;
+            let modifier = cell.modifier;
+
+            while x < buffer.area.width {
+                let c = &buffer[(x, y)];
+                if c.fg != fg || c.modifier != modifier {
+                    break;
+                }
+                text.push_str(c.symbol());
+                x += 1;
+            }
+
+            let text = text.trim_end();
+            if text.is_empty() {
+                continue;
+            }
+
+            let color = color_to_hex(fg);
+            svg.push_str(&format!(
+                r#"  <text class="term{bold}" x="{}" y="{}" fill="{color}">{}</text>
+"#,
+                pad + start_x * cell_width,
+                pad + y * cell_height,
+                escape_xml(text)
+            ));
+        }
+    }
+
+    svg.push_str("</svg>\n");
+    svg
+}
+
+fn color_to_hex(color: Color) -> String {
+    match color {
+        Color::Black => "#050814".into(),
+        Color::Red | Color::LightRed => "#ff5b6c".into(),
+        Color::Green | Color::LightGreen => "#3cff9e".into(),
+        Color::Yellow | Color::LightYellow => "#ffd166".into(),
+        Color::Blue | Color::LightBlue => "#5aa7ff".into(),
+        Color::Magenta | Color::LightMagenta => "#ff4fd8".into(),
+        Color::Cyan | Color::LightCyan => "#28e7ff".into(),
+        Color::Gray | Color::DarkGray => "#7d8aa6".into(),
+        Color::White => "#d9f2ff".into(),
+        Color::Rgb(r, g, b) => format!("#{r:02x}{g:02x}{b:02x}"),
+        Color::Indexed(_) | Color::Reset => "#d9f2ff".into(),
+    }
+}
+
+fn escape_xml(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
