@@ -21,6 +21,12 @@ KASPA OPS TERMINAL  ::  ASIC FLEET CONTROL  ::  CPU DEV MINER
 The production lane is ASIC operations. The CPU lane is for benchmarking, pool testing, stratum validation, and development work.
 
 
+## UI Preview
+
+<p align="center">
+  <img src="docs/assets/kaspilot-ui-preview.svg" alt="Animated KASPilot real-time mining cockpit preview" width="100%">
+</p>
+
 ## Signal
 
 `kaspa` `kheavyhash` `asic-mining` `stratum` `stratum-ssl` `cgminer-api` `fleet-monitoring` `cpu-benchmark` `autotune` `rust` `tui` `mining-ops`

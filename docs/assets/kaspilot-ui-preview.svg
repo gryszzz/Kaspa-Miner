@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">KASPilot real-time mining cockpit preview</title>
+  <desc id="desc">Animated preview of the KASPilot Kaspa miner terminal dashboard with live hashrate, share quality, job age, thread heat, and event stream.</desc>
+  <style>
+    :root {
+      --bg: #060912;
+      --panel: #0c1322;
+      --panel2: #0f1a2c;
+      --cyan: #28e7ff;
+      --green: #3cff9e;
+      --yellow: #ffd166;
+      --magenta: #ff4fd8;
+      --red: #ff5b6c;
+      --muted: #6b7893;
+      --text: #d9f2ff;
+    }
+
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+    .title { fill: var(--cyan); font-size: 28px; font-weight: 800; letter-spacing: 2px; }
+    .label { fill: var(--muted); font-size: 16px; font-weight: 700; }
+    .value { fill: var(--text); font-size: 26px; font-weight: 800; }
+    .small { fill: var(--text); font-size: 15px; }
+    .dim { fill: var(--muted); font-size: 14px; }
+    .green { fill: var(--green); }
+    .cyan { fill: var(--cyan); }
+    .yellow { fill: var(--yellow); }
+    .magenta { fill: var(--magenta); }
+    .red { fill: var(--red); }
+    .panel { fill: rgba(12, 19, 34, 0.95); stroke: rgba(40, 231, 255, 0.45); stroke-width: 1.3; rx: 8; }
+    .panel-soft { fill: rgba(15, 26, 44, 0.92); stroke: rgba(107, 120, 147, 0.45); stroke-width: 1; rx: 8; }
+    .grid { stroke: rgba(40, 231, 255, 0.09); stroke-width: 1; }
+    .spark { fill: none; stroke: var(--cyan); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; filter: drop-shadow(0 0 10px rgba(40, 231, 255, 0.65)); }
+    .spark2 { fill: none; stroke: rgba(255, 79, 216, 0.42); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .scan { animation: scan 4s linear infinite; }
+    .pulse { animation: pulse 1.4s ease-in-out infinite; }
+    .blink { animation: blink 1.2s steps(2, end) infinite; }
+    .draw { stroke-dasharray: 740; stroke-dashoffset: 740; animation: draw 3.8s ease-in-out infinite; }
+    .barA { animation: barA 2.6s ease-in-out infinite; transform-origin: left center; }
+    .barB { animation: barB 2.9s ease-in-out infinite; transform-origin: left center; }
+    .barC { animation: barC 2.3s ease-in-out infinite; transform-origin: left center; }
+    .barD { animation: barD 3.1s ease-in-out infinite; transform-origin: left center; }
+    .event1 { animation: eventFade 5s linear infinite; }
+    .event2 { animation: eventFade 5s linear infinite 0.7s; }
+    .event3 { animation: eventFade 5s linear infinite 1.4s; }
+    .event4 { animation: eventFade 5s linear infinite 2.1s; }
+    .event5 { animation: eventFade 5s linear infinite 2.8s; }
+
+    @keyframes scan {
+      from { transform: translateY(-120px); opacity: 0; }
+      15% { opacity: 0.55; }
+      85% { opacity: 0.12; }
+      to { transform: translateY(760px); opacity: 0; }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 0.45; }
+      50% { opacity: 1; }
+    }
+    @keyframes blink {
+      0%, 45% { opacity: 1; }
+      46%, 100% { opacity: 0.35; }
+    }
+    @keyframes draw {
+      0% { stroke-dashoffset: 740; opacity: 0.25; }
+      35% { stroke-dashoffset: 0; opacity: 1; }
+      80% { stroke-dashoffset: 0; opacity: 1; }
+      100% { stroke-dashoffset: -740; opacity: 0.25; }
+    }
+    @keyframes barA { 0%,100% { transform: scaleX(0.65); } 50% { transform: scaleX(0.95); } }
+    @keyframes barB { 0%,100% { transform: scaleX(0.82); } 50% { transform: scaleX(0.56); } }
+    @keyframes barC { 0%,100% { transform: scaleX(0.42); } 50% { transform: scaleX(0.88); } }
+    @keyframes barD { 0%,100% { transform: scaleX(0.74); } 50% { transform: scaleX(0.98); } }
+    @keyframes eventFade {
+      0% { opacity: 0.25; }
+      12% { opacity: 1; }
+      70% { opacity: 1; }
+      100% { opacity: 0.38; }
+    }
+  </style>
+
+  <rect width="1280" height="720" fill="var(--bg)"/>
+  <path class="grid" d="M0 80H1280M0 160H1280M0 240H1280M0 320H1280M0 400H1280M0 480H1280M0 560H1280M0 640H1280M80 0V720M160 0V720M240 0V720M320 0V720M400 0V720M480 0V720M560 0V720M640 0V720M720 0V720M800 0V720M880 0V720M960 0V720M1040 0V720M1120 0V720M1200 0V720"/>
+  <rect class="scan" x="0" y="0" width="1280" height="110" fill="rgba(40,231,255,0.08)"/>
+
+  <rect class="panel" x="32" y="26" width="1216" height="70"/>
+  <text class="mono title" x="58" y="70">KASPILOT // REAL-TIME KASPA MINING COCKPIT</text>
+  <circle class="pulse" cx="1132" cy="60" r="10" fill="var(--green)"/>
+  <text class="mono value green" x="1154" y="69">LIVE</text>
+
+  <g>
+    <rect class="panel-soft" x="32" y="118" width="222" height="92"/>
+    <text class="mono label" x="54" y="151">NOW</text>
+    <text class="mono value cyan" x="54" y="189">22.84 KH/s</text>
+
+    <rect class="panel-soft" x="278" y="118" width="222" height="92"/>
+    <text class="mono label" x="300" y="151">PEAK</text>
+    <text class="mono value magenta" x="300" y="189">28.11 KH/s</text>
+
+    <rect class="panel-soft" x="524" y="118" width="222" height="92"/>
+    <text class="mono label" x="546" y="151">SHARES</text>
+    <text class="mono value green" x="546" y="189">14 / 0</text>
+
+    <rect class="panel-soft" x="770" y="118" width="222" height="92"/>
+    <text class="mono label" x="792" y="151">JOB AGE</text>
+    <text class="mono value yellow blink" x="792" y="189">2s</text>
+
+    <rect class="panel-soft" x="1016" y="118" width="232" height="92"/>
+    <text class="mono label" x="1038" y="151">THREADS</text>
+    <text class="mono value" x="1038" y="189">8 x 4096</text>
+  </g>
+
+  <rect class="panel" x="32" y="238" width="460" height="420"/>
+  <text class="mono label cyan" x="56" y="275">SIGNAL</text>
+  <text class="mono small" x="58" y="310">pool        stratum+ssl://kaspa.pool:5555</text>
+  <text class="mono small" x="58" y="340">wallet      kaspa:qrx...9z6</text>
+  <text class="mono small yellow" x="58" y="370">job         82df19b72b88e7c...</text>
+  <text class="mono small" x="58" y="400">diff        128.0000</text>
+  <text class="mono small magenta" x="58" y="430">extranonce  00a7ff12</text>
+  <text class="mono small" x="58" y="460">uptime      00:14:32</text>
+  <text class="mono small" x="58" y="490">reconnects  0</text>
+  <text class="mono small green" x="58" y="520">quality     100% accepted</text>
+
+  <rect x="58" y="548" width="380" height="18" rx="8" fill="rgba(107,120,147,0.25)"/>
+  <rect class="barD" x="58" y="548" width="380" height="18" rx="8" fill="var(--green)"/>
+  <text class="mono dim" x="58" y="594">THREAD HEAT</text>
+  <g transform="translate(58,610)">
+    <text class="mono dim" x="0" y="0">00</text><rect class="barA" x="34" y="-12" width="330" height="10" fill="var(--green)"/>
+    <text class="mono dim" x="0" y="18">01</text><rect class="barB" x="34" y="6" width="330" height="10" fill="var(--cyan)"/>
+    <text class="mono dim" x="0" y="36">02</text><rect class="barC" x="34" y="24" width="330" height="10" fill="var(--yellow)"/>
+  </g>
+
+  <rect class="panel" x="520" y="238" width="728" height="174"/>
+  <text class="mono label cyan" x="544" y="275">HASHRATE TRACE</text>
+  <path class="spark2" d="M548 360 L590 338 L632 350 L674 303 L716 322 L758 286 L800 310 L842 270 L884 295 L926 252 L968 282 L1010 246 L1052 278 L1094 232 L1136 264 L1178 224 L1220 250"/>
+  <path class="spark draw" d="M548 360 L590 338 L632 350 L674 303 L716 322 L758 286 L800 310 L842 270 L884 295 L926 252 L968 282 L1010 246 L1052 278 L1094 232 L1136 264 L1178 224 L1220 250"/>
+
+  <rect class="panel" x="520" y="438" width="728" height="220"/>
+  <text class="mono label cyan" x="544" y="475">EVENT STREAM</text>
+  <text class="mono small event1 green" x="548" y="510">[00:14:21] share accepted</text>
+  <text class="mono small event2 yellow" x="548" y="540">[00:14:22] job   new work 82df19b72b88e7c</text>
+  <text class="mono small event3 cyan" x="548" y="570">[00:14:23] diff  128.0000</text>
+  <text class="mono small event4 green" x="548" y="600">[00:14:26] share accepted</text>
+  <text class="mono small event5" x="548" y="630">[00:14:28] pool  connected // latency stable</text>
+
+  <rect class="panel-soft" x="32" y="676" width="1216" height="28"/>
+  <text class="mono dim" x="54" y="696">[Q]/[ESC] quit    [C] clear events    KASPILOT REAL-TIME MINING COCKPIT</text>
+</svg>
