@@ -35,7 +35,7 @@ impl Config {
         let mut cfg = if path.exists() {
             let raw = std::fs::read_to_string(path)
                 .with_context(|| format!("Reading {}", path.display()))?;
-            toml::from_str::<Config>(&raw).context("Parsing config.toml")?
+            toml::from_str::<Config>(&raw).with_context(|| format!("Parsing {}", path.display()))?
         } else {
             Config::default()
         };
@@ -58,12 +58,14 @@ impl Config {
 
         if cfg.pool.is_empty() {
             anyhow::bail!(
-                "Pool required.  Use --pool stratum+tcp://host:port  or set pool in config.toml"
+                "Pool required. Use --pool stratum+tcp://host:port or set pool in {}",
+                path.display()
             );
         }
         if cfg.wallet.is_empty() {
             anyhow::bail!(
-                "Wallet required.  Use --wallet <kaspa:...>  or set wallet in config.toml"
+                "Wallet required. Use --wallet <kaspa:...> or set wallet in {}",
+                path.display()
             );
         }
         if !cfg.wallet.starts_with("kaspa:") && !cfg.wallet.starts_with("kaspatest:") {

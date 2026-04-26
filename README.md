@@ -72,7 +72,7 @@ Release assets:
 - `kaspa-miner-aarch64-pc-windows-msvc.zip`
 - `SHA256SUMS.txt`
 
-Each release archive includes the binary, `README.md`, `config.example.toml`, and `fleet.example.toml`. Windows archives also include a first-run installer that puts the binary on your user path.
+Each release archive includes the binary, `README.md`, `start-mining.toml`, `config.example.toml`, and `fleet.example.toml`. Windows archives also include a first-run installer that puts the binary on your user path. The macOS package installs starter configs to `/usr/local/share/kaspilot/`.
 
 ## First Run
 
@@ -81,6 +81,7 @@ macOS, recommended universal package:
 ```sh
 sudo installer -pkg kaspa-miner-macos-universal.pkg -target /
 kaspa-miner --version
+cp /usr/local/share/kaspilot/start-mining.toml ./config.toml
 ```
 
 Windows:
@@ -91,6 +92,24 @@ kaspa-miner --version
 ```
 
 Public desktop releases are blocked unless Apple notarization and Windows Authenticode signing secrets are configured. See `docs/macos-no-warning-release.md` and `docs/windows-no-warning-release.md`.
+
+If macOS says Apple could not verify `kaspa-miner` is free of malware, the file was not notarized or was not the notarized `.pkg` release asset. Use the signed `kaspa-miner-macos-universal.pkg` from the latest release after the Apple signing secrets are configured.
+
+## Start Mining Config
+
+Release packages include `start-mining.toml` as the dedicated Kaspa pool and wallet config.
+
+```sh
+cp start-mining.toml config.toml
+$EDITOR config.toml
+kaspa-miner --config config.toml
+```
+
+In the macOS installer package, the starter config is installed here:
+
+```sh
+cp /usr/local/share/kaspilot/start-mining.toml ./config.toml
+```
 
 ## Install From Source
 
@@ -109,7 +128,7 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release
 Create local configs:
 
 ```sh
-cp config.example.toml config.toml
+cp start-mining.toml config.toml
 cp fleet.example.toml fleet.toml
 ```
 
@@ -148,12 +167,12 @@ If an ASIC exposes a CGMiner-compatible API on `api_port`, KASPilot normalizes l
 
 ## CPU Dev Miner
 
-Edit `config.toml`:
+Edit `config.toml` or the release-provided `start-mining.toml`:
 
 ```toml
-pool = "stratum+ssl://pool.example.com:5555"
+pool = "stratum+ssl://YOUR_KASPA_POOL_HOST:5555"
 wallet = "kaspa:your_wallet_address"
-worker = "rig-01"
+worker = "kaspa-rig-01"
 threads = 8
 batch_size = 4096
 reconnect_secs = 5
@@ -163,6 +182,12 @@ Start the TUI:
 
 ```sh
 ./target/release/kaspa-miner
+```
+
+From a downloaded release, you can mine directly from the starter config after editing the wallet and pool:
+
+```sh
+kaspa-miner --config start-mining.toml
 ```
 
 Use plain logs:
@@ -271,7 +296,7 @@ The nonce is the full 8-byte hex nonce, including any pool-provided extranonce p
 
 - Confirm your pool supports Kaspa Common Stratum.
 - Prefer `stratum+ssl://` when the pool supports TLS.
-- Keep wallet addresses in `config.toml`, not shell history.
+- Keep wallet addresses in `config.toml` or `start-mining.toml`, not shell history.
 - Keep ASIC management ports on a trusted LAN or VPN.
 - Do not expose CGMiner API ports to the public internet.
 - Use `--fleet` for ASIC operations and CPU mode for protocol validation.

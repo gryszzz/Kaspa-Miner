@@ -1,0 +1,15 @@
+# KASPilot Kaspa mining starter config.
+#
+# 1. Replace pool with your Kaspa pool endpoint.
+# 2. Paste your Kaspa wallet address into wallet.
+# 3. Run: kaspa-miner --config start-mining.toml
+#
+# macOS pkg installs a copy at:
+# /usr/local/share/kaspilot/start-mining.toml
+
+pool = "stratum+ssl://YOUR_KASPA_POOL_HOST:5555"
+wallet = ""
+worker = "kaspa-rig-01"
+threads = 8
+batch_size = 4096
+reconnect_secs = 5
