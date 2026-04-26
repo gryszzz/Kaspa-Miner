@@ -120,7 +120,7 @@ jobs:
           set -euo pipefail
           mkdir -p package dist
           cp "target/${{ matrix.target }}/release/${{ matrix.bin }}" package/
-          cp README.md start-mining.toml config.example.toml fleet.example.toml package/
+          cp README.md start-mining.toml config.example.toml gpu.example.toml fleet.example.toml package/
           case "${{ matrix.target }}" in
             *windows-msvc)
               cp install-windows.cmd install-windows.ps1 package/
@@ -219,7 +219,7 @@ jobs:
           fi
           mkdir -p pkg-root/usr/local/bin pkg-root/usr/local/share/kaspilot
           cp package/kaspa-miner pkg-root/usr/local/bin/kaspa-miner
-          cp README.md start-mining.toml config.example.toml fleet.example.toml pkg-root/usr/local/share/kaspilot/
+          cp README.md start-mining.toml config.example.toml gpu.example.toml fleet.example.toml pkg-root/usr/local/share/kaspilot/
           pkgbuild \
             --root pkg-root \
             --identifier com.gryszzz.kaspilot \

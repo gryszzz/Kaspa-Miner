@@ -56,6 +56,7 @@ The package installs:
 /usr/local/bin/kaspa-miner
 /usr/local/share/kaspilot/start-mining.toml
 /usr/local/share/kaspilot/config.example.toml
+/usr/local/share/kaspilot/gpu.example.toml
 /usr/local/share/kaspilot/fleet.example.toml
 /usr/local/share/kaspilot/README.md
 ```

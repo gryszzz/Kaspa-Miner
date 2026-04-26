@@ -1,0 +1,34 @@
+# KASPilot managed GPU engine config.
+#
+# KASPilot does not pretend a CPU kernel is a GPU miner. This config lets the
+# CLI supervise an installed Kaspa kHeavyHash GPU engine while KASPilot owns the
+# pool/wallet config, logging, and restart watchdog.
+#
+# 1. Install a Kaspa-capable GPU miner for your hardware.
+# 2. Copy this file to gpu.toml.
+# 3. Replace command and args with that miner's exact CLI syntax.
+# 4. Run: kaspa-miner --gpu --config start-mining.toml --gpu-config gpu.toml
+#
+# Supported placeholders in args/env:
+# {pool} {wallet} {worker} {login} {devices}
+
+command = "YOUR_GPU_MINER_BINARY"
+devices = "0"
+restart = true
+restart_delay_secs = 10
+
+# Omit max_restarts for unlimited watchdog restarts.
+# max_restarts = 20
+
+# The flags below are a template. GPU miners do not all use the same CLI flags,
+# so adjust this list to the exact engine you install.
+args = [
+  "--algo", "kheavyhash",
+  "--pool", "{pool}",
+  "--user", "{login}",
+  "--devices", "{devices}",
+]
+
+[env]
+# CUDA_VISIBLE_DEVICES = "{devices}"
+# GPU_MAX_ALLOC_PERCENT = "100"

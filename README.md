@@ -13,12 +13,12 @@
 | . \  / ___ \ ___) |  __/| | | (_) | |_
 |_|\_\/_/   \_\____/|_|   |_|_|\___/ \__|
 
-KASPA OPS TERMINAL  ::  ASIC FLEET CONTROL  ::  CPU DEV MINER
+KASPA OPS TERMINAL  ::  ASIC FLEET CONTROL  ::  GPU SUPERVISOR  ::  CPU DEV MINER
 ```
 
-**KASPilot** is a Kaspa-only mining operations terminal built for ASIC fleet visibility, pool validation, and local kHeavyHash benchmarking. It gives you a production-facing fleet controller and a polished CPU dev miner in one Rust binary.
+**KASPilot** is a Kaspa-only mining operations terminal built for ASIC fleet visibility, GPU engine supervision, pool validation, and local kHeavyHash benchmarking. It gives you a production-facing fleet controller, managed GPU lane, and polished CPU dev miner in one Rust binary.
 
-The production lane is ASIC operations. The CPU lane is for benchmarking, pool testing, stratum validation, and development work.
+The production lane is ASIC operations. The GPU lane supervises optimized external kHeavyHash engines. The CPU lane is for benchmarking, pool testing, stratum validation, and development work.
 
 
 ## UI Preview
@@ -29,7 +29,7 @@ The production lane is ASIC operations. The CPU lane is for benchmarking, pool t
 
 ## Signal
 
-`kaspa` `kheavyhash` `asic-mining` `stratum` `stratum-ssl` `cgminer-api` `fleet-monitoring` `cpu-benchmark` `autotune` `rust` `tui` `mining-ops`
+`kaspa` `kheavyhash` `asic-mining` `gpu-mining` `stratum` `stratum-ssl` `cgminer-api` `fleet-monitoring` `cpu-benchmark` `autotune` `rust` `tui` `mining-ops`
 
 ## Command Deck
 
@@ -37,6 +37,8 @@ The production lane is ASIC operations. The CPU lane is for benchmarking, pool t
 | --- | --- | --- |
 | Fleet control | `kaspa-miner --fleet` | Monitor ASIC reachability, TH/s, temp, fan, uptime, pool, accepted/rejected shares |
 | One-shot audit | `kaspa-miner --fleet --fleet-once` | Poll every configured ASIC once and exit |
+| GPU control | `kaspa-miner --gpu` | Supervise an installed Kaspa kHeavyHash GPU engine with watchdog restarts |
+| GPU discovery | `kaspa-miner --gpu-info` | Print local NVIDIA/AMD/macOS GPU runtime hints |
 | CPU benchmark | `kaspa-miner --benchmark` | Measure local kHeavyHash throughput without touching a pool |
 | CPU autotune | `kaspa-miner --tune` | Sweep thread and batch settings, then rank the fastest configs |
 | Dev mining | `kaspa-miner` | Run the Kaspa Common Stratum CPU dev miner with TUI |
@@ -52,6 +54,7 @@ The production lane is ASIC operations. The CPU lane is for benchmarking, pool t
 | Pool transport | `stratum+tcp://`, `stratum://`, `tcp://`, `stratum+ssl://`, `ssl://` |
 | Pool hardening | Connect timeout, TLS support, `TCP_NODELAY`, reconnect loop |
 | Hash path | kHeavyHash PoW using `kaspa-hashes` primitives |
+| GPU lane | External optimized kHeavyHash engine supervisor with config substitution and watchdog restart |
 | Difficulty | Share target derived from `mining.set_difficulty` |
 | Nonce scan | Extranonce support plus non-overlapping per-thread stride |
 | Operator UI | Ratatui dashboard, plain logs, fleet report, benchmark report |
@@ -72,7 +75,7 @@ Release assets:
 - `kaspa-miner-aarch64-pc-windows-msvc.zip`
 - `SHA256SUMS.txt`
 
-Each release archive includes the binary, `README.md`, `start-mining.toml`, `config.example.toml`, and `fleet.example.toml`. Windows archives also include a first-run installer that puts the binary on your user path. The macOS package installs starter configs to `/usr/local/share/kaspilot/`.
+Each release archive includes the binary, `README.md`, `start-mining.toml`, `config.example.toml`, `gpu.example.toml`, and `fleet.example.toml`. Windows archives also include a first-run installer that puts the binary on your user path. The macOS package installs starter configs to `/usr/local/share/kaspilot/`.
 
 ## First Run
 
@@ -111,6 +114,57 @@ In the macOS installer package, the starter config is installed here:
 cp /usr/local/share/kaspilot/start-mining.toml ./config.toml
 ```
 
+## GPU Mining
+
+KASPilot now has a managed GPU lane for Kaspa. It does not ship a fake GPU kernel; instead it supervises a real installed kHeavyHash GPU engine, injects your Kaspa pool/wallet config, prefixes logs, and restarts the process if it exits.
+
+Create configs:
+
+```sh
+cp start-mining.toml config.toml
+cp gpu.example.toml gpu.toml
+```
+
+Edit `config.toml`:
+
+```toml
+pool = "stratum+ssl://YOUR_KASPA_POOL_HOST:5555"
+wallet = "kaspa:your_wallet_address"
+worker = "kaspa-gpu-rig-01"
+```
+
+Edit `gpu.toml` to point at the GPU engine you installed:
+
+```toml
+command = "YOUR_GPU_MINER_BINARY"
+devices = "0"
+restart = true
+restart_delay_secs = 10
+
+args = [
+  "--algo", "kheavyhash",
+  "--pool", "{pool}",
+  "--user", "{login}",
+  "--devices", "{devices}",
+]
+```
+
+Run it:
+
+```sh
+kaspa-miner --gpu --config config.toml --gpu-config gpu.toml
+```
+
+Discovery:
+
+```sh
+kaspa-miner --gpu-info
+```
+
+Placeholders available in `gpu.toml`: `{pool}`, `{wallet}`, `{worker}`, `{login}`, `{devices}`.
+
+Important: Kaspa is ASIC-dominant now. GPU mining is useful for learning, testing, spare hardware, and managed rigs, but serious Kaspa production mining usually means ASICs. KASPilot keeps GPU support honest by treating native CUDA/OpenCL kernels as a dedicated future backend instead of overstating CPU-class code.
+
 ## Install From Source
 
 ```sh
@@ -129,6 +183,7 @@ Create local configs:
 
 ```sh
 cp start-mining.toml config.toml
+cp gpu.example.toml gpu.toml
 cp fleet.example.toml fleet.toml
 ```
 
@@ -265,6 +320,10 @@ Tuning rules:
 --tune-seconds <N>    Per-test duration for --tune
 --tune-max-threads N  Maximum thread count for --tune
 --tune-batches LIST   Comma-separated batch sizes for --tune
+--gpu                 Run managed Kaspa GPU engine mode
+--gpu-config <PATH>   GPU engine config path, default: gpu.toml
+--gpu-once            Run GPU engine once without watchdog restart
+--gpu-info            Print local GPU/runtime discovery
 --fleet               ASIC fleet controller mode
 --fleet-config <PATH> Fleet config path, default: fleet.toml
 --fleet-once          Poll fleet once and exit
@@ -299,6 +358,7 @@ The nonce is the full 8-byte hex nonce, including any pool-provided extranonce p
 - Keep wallet addresses in `config.toml` or `start-mining.toml`, not shell history.
 - Keep ASIC management ports on a trusted LAN or VPN.
 - Do not expose CGMiner API ports to the public internet.
+- Use `--gpu` to supervise an installed optimized GPU engine; keep its binary updated from a source you trust.
 - Use `--fleet` for ASIC operations and CPU mode for protocol validation.
 - Use release builds for benchmarks and production binaries.
 - Use `RUSTFLAGS="-C target-cpu=native"` only when the binary will run on the build machine.
@@ -323,6 +383,7 @@ The release workflow builds:
 ## Roadmap
 
 - Vendor-specific adapters for richer IceRiver and Bitmain-style telemetry.
+- Native CUDA/OpenCL kHeavyHash backend behind `--gpu-native`.
 - JSON and CSV fleet export.
 - Alert thresholds for offline rigs, high temperature, fan faults, and reject spikes.
 - Pool failover visibility and worker grouping.

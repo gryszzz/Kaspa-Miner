@@ -9,6 +9,7 @@ mod algorithm;
 mod branding;
 mod config;
 mod fleet;
+mod gpu;
 mod miner;
 mod stats;
 mod stratum;
@@ -21,9 +22,9 @@ use stats::Stats;
 #[command(
     name = "kaspa-miner",
     version,
-    about = "KASPilot: Kaspa ASIC fleet controller plus CPU benchmark/dev miner",
-    long_about = "KASPilot is a Kaspa-only operations terminal for ASIC fleet telemetry, pool validation, CPU benchmarking, and Common Stratum development mining.",
-    after_help = "Modes: --fleet for ASIC ops, --benchmark for local kHeavyHash speed, --tune for CPU settings, or provide pool/wallet config for dev mining."
+    about = "KASPilot: Kaspa ASIC fleet controller plus GPU supervisor and CPU benchmark/dev miner",
+    long_about = "KASPilot is a Kaspa-only operations terminal for ASIC fleet telemetry, managed GPU engine supervision, pool validation, CPU benchmarking, and Common Stratum development mining.",
+    after_help = "Modes: --fleet for ASIC ops, --gpu for managed GPU engines, --benchmark for local kHeavyHash speed, --tune for CPU settings, or provide pool/wallet config for dev mining."
 )]
 struct Cli {
     /// Path to the TOML config file.
@@ -78,6 +79,22 @@ struct Cli {
     #[arg(long, value_delimiter = ',', default_value = "1024,4096,16384,65536")]
     tune_batches: Vec<u64>,
 
+    /// Run managed Kaspa GPU mining through gpu.toml.
+    #[arg(long)]
+    gpu: bool,
+
+    /// Path to the GPU engine TOML config.
+    #[arg(long, default_value = "gpu.toml")]
+    gpu_config: PathBuf,
+
+    /// Run the GPU engine once without watchdog restart.
+    #[arg(long)]
+    gpu_once: bool,
+
+    /// Print local GPU/runtime discovery and exit.
+    #[arg(long)]
+    gpu_info: bool,
+
     /// Run ASIC fleet controller mode instead of CPU mining.
     #[arg(long)]
     fleet: bool,
@@ -98,6 +115,11 @@ struct Cli {
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
+
+    if cli.gpu_info {
+        gpu::print_info();
+        return Ok(());
+    }
 
     if cli.fleet {
         branding::print_banner("ASIC FLEET CONTROL");
@@ -139,6 +161,12 @@ async fn main() -> Result<()> {
         cli.threads,
         cli.batch_size,
     )?);
+
+    if cli.gpu {
+        branding::print_banner("GPU MINER CONTROL");
+        gpu::run(config, &cli.gpu_config, cli.gpu_once).await?;
+        return Ok(());
+    }
 
     let stats = Arc::new(Stats::new(config.threads));
     if cli.no_tui {

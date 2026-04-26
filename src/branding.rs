@@ -11,5 +11,5 @@ pub const BANNER: &str = r#"
 pub fn print_banner(mode: &str) {
     println!("{BANNER}");
     println!("{NAME} :: {mode}");
-    println!("Kaspa ASIC fleet controller / CPU benchmark miner\n");
+    println!("Kaspa ASIC fleet controller / GPU supervisor / CPU dev miner\n");
 }
